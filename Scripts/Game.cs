@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using Godot;
 using DynamicRPG.World;
+using DynamicRPG.World.Generation;
+using DynamicRPG.World.Locations;
 
 #nullable enable
 
@@ -9,6 +11,8 @@ namespace DynamicRPG;
 public partial class Game : Node2D
 {
     private readonly List<Region> _worldRegions = new();
+    private readonly List<Location> _worldLocations = new();
+    private readonly RegionLocationGenerator _regionLocationGenerator = new();
 
     private Node? _world;
     private CanvasLayer? _ui;
@@ -21,6 +25,11 @@ public partial class Game : Node2D
     /// Exposes the generated world regions for read-only access.
     /// </summary>
     public IReadOnlyList<Region> WorldRegions => _worldRegions;
+
+    /// <summary>
+    /// Exposes the generated world locations for read-only access.
+    /// </summary>
+    public IReadOnlyList<Location> WorldLocations => _worldLocations;
 
     public override void _Ready()
     {
@@ -51,6 +60,7 @@ public partial class Game : Node2D
     private void GenerateWorld()
     {
         _worldRegions.Clear();
+        _worldLocations.Clear();
 
         var regions = new List<Region>
         {
@@ -85,7 +95,10 @@ public partial class Game : Node2D
 
         foreach (var region in _worldRegions)
         {
-            GD.Print($"Regione generata: {region.Name} ({region.EnvironmentType})");
+            _regionLocationGenerator.GenerateForRegion(region);
+            _worldLocations.AddRange(region.Locations);
+
+            GD.Print($"Regione generata: {region.Name} ({region.EnvironmentType}) - Location: {region.Locations.Count}");
         }
     }
 }
