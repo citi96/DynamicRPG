@@ -34,6 +34,9 @@ public partial class Game : Node2D
     private Node? _digitalGameMaster;
     private Node? _questManager;
 
+    public Region CurrentRegion { get; private set; } = null!;
+    public Location CurrentLocation { get; private set; } = null!;
+
     /// <summary>
     /// Exposes the generated world regions for read-only access.
     /// </summary>
@@ -56,7 +59,9 @@ public partial class Game : Node2D
         _questManager = null;
 
         GenerateWorld();
+        InitializeStartingLocation();
 
+        GD.Print($"Mondo generato con {WorldRegions.Count} regioni, posizione iniziale: {CurrentLocation.Name}");
         GD.Print("Game Started");
     }
 
@@ -117,6 +122,19 @@ public partial class Game : Node2D
         }
 
         ConnectRegions(_worldRegions);
+    }
+
+    private void InitializeStartingLocation()
+    {
+        CurrentRegion = WorldRegions
+            .FirstOrDefault(region => region.Name.Contains("Regno", StringComparison.OrdinalIgnoreCase))
+            ?? WorldRegions.FirstOrDefault()
+            ?? throw new InvalidOperationException("Nessuna regione è stata generata per l'inizializzazione del giocatore.");
+
+        CurrentLocation = CurrentRegion.Locations
+            .FirstOrDefault(location => location.Type == LocationType.Village)
+            ?? CurrentRegion.Locations.FirstOrDefault()
+            ?? throw new InvalidOperationException($"La regione {CurrentRegion.Name} non contiene location valide per l'inizializzazione del giocatore.");
     }
 
     private void AssignControllingFaction(Region region)
