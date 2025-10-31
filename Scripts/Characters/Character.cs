@@ -17,6 +17,11 @@ public class Character
     private const int BaseMana = 10;
     private const int ManaPerIntelligencePoint = 2;
     private const double ExperienceGrowthFactor = 1.5;
+    private const double BaseCarryCapacity = 50d;
+    private const double CarryCapacityPerStrengthPoint = 10d;
+    private const int DefaultBaseMovementAllowance = 5;
+
+    private double _additionalCarryCapacity;
 
     /// <summary>
     /// Gets or sets the in-world display name.
@@ -111,7 +116,23 @@ public class Character
     /// <summary>
     /// Gets the inventory storing unequipped items.
     /// </summary>
-    public Inventory Inventory { get; } = new();
+    public Inventory Inventory { get; }
+
+    /// <summary>
+    /// Gets the current encumbrance level derived from the carried load.
+    /// 0 = none, 1 = encumbered, 2 = heavily encumbered.
+    /// </summary>
+    public int EncumbranceLevel { get; private set; }
+
+    /// <summary>
+    /// Gets the base movement allowance expressed in tiles per turn.
+    /// </summary>
+    public int BaseMovementAllowance { get; private set; } = DefaultBaseMovementAllowance;
+
+    /// <summary>
+    /// Gets the current movement allowance after applying encumbrance penalties.
+    /// </summary>
+    public int CurrentMovementAllowance { get; private set; } = DefaultBaseMovementAllowance;
 
     /// <summary>
     /// Gets the collection of permanent traits that the character has learned.
@@ -154,8 +175,18 @@ public class Character
     /// </summary>
     public Character()
     {
+        Inventory = new Inventory(this);
         RecalculateDerivedAttributes();
+        SynchronizeCarryCapacity();
+        HandleInventoryWeightChanged(Inventory.GetTotalWeight());
     }
+
+    /// <summary>
+    /// Calculates the maximum weight that the character can carry based on strength and bonuses.
+    /// </summary>
+    /// <returns>The carry capacity in weight units.</returns>
+    public double GetCarryCapacity() =>
+        BaseCarryCapacity + (Strength * CarryCapacityPerStrengthPoint) + _additionalCarryCapacity;
 
     /// <summary>
     /// Learns the provided trait, applying its effects if it was not already known.
@@ -264,6 +295,8 @@ public class Character
         CurrentMana = NormalizeResourceValue(CurrentMana, previousMaxMana, MaxMana);
 
         RefreshCombatStatistics();
+        SynchronizeCarryCapacity();
+        HandleInventoryWeightChanged(Inventory.GetTotalWeight());
     }
 
     private void RefreshCombatStatistics()
@@ -374,11 +407,81 @@ public class Character
             return;
         }
 
-        if (Inventory.MaxWeight is null)
+        _additionalCarryCapacity += additionalWeight;
+        SynchronizeCarryCapacity();
+        HandleInventoryWeightChanged(Inventory.GetTotalWeight());
+    }
+
+    internal void SynchronizeCarryCapacity()
+    {
+        Inventory.MaxWeight = GetCarryCapacity();
+    }
+
+    internal void HandleInventoryWeightChanged(double totalWeight)
+    {
+        var previousEncumbrance = EncumbranceLevel;
+
+        if (Inventory.MaxWeight is not double maxWeight || maxWeight <= 0)
+        {
+            EncumbranceLevel = 0;
+            UpdateMovementAllowance();
+            return;
+        }
+
+        var loadRatio = totalWeight / maxWeight;
+
+        EncumbranceLevel = loadRatio switch
+        {
+            <= 1.0 => 0,
+            <= 1.5 => 1,
+            <= 2.0 => 2,
+            _ => 2,
+        };
+
+        if (EncumbranceLevel != previousEncumbrance)
+        {
+            ReportEncumbranceTransition(previousEncumbrance, EncumbranceLevel);
+        }
+
+        UpdateMovementAllowance();
+    }
+
+    private void UpdateMovementAllowance()
+    {
+        var adjustedAllowance = BaseMovementAllowance;
+
+        adjustedAllowance = EncumbranceLevel switch
+        {
+            1 => Math.Max(1, adjustedAllowance - 1),
+            2 => Math.Max(1, (int)Math.Ceiling(adjustedAllowance / 2.0)),
+            _ => adjustedAllowance,
+        };
+
+        CurrentMovementAllowance = adjustedAllowance;
+    }
+
+    private static void ReportEncumbranceTransition(int previousEncumbrance, int newEncumbrance)
+    {
+        if (newEncumbrance == previousEncumbrance)
         {
             return;
         }
 
-        Inventory.MaxWeight += additionalWeight;
+        if (newEncumbrance == 1)
+        {
+            Console.WriteLine("Sei appesantito, movimento ridotto.");
+            return;
+        }
+
+        if (newEncumbrance == 2)
+        {
+            Console.WriteLine("Sei sovraccarico, quasi immobile.");
+            return;
+        }
+
+        if (previousEncumbrance > 0 && newEncumbrance == 0)
+        {
+            Console.WriteLine("Ti senti più leggero, puoi muoverti liberamente.");
+        }
     }
 }
