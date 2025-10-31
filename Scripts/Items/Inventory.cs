@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
+using DynamicRPG.Characters;
+
 #nullable enable
 
 namespace DynamicRPG.Items;
@@ -27,6 +29,11 @@ public class Inventory
     public double? MaxWeight { get; set; } = 50d;
 
     /// <summary>
+    /// Gets the character that owns this inventory, if any.
+    /// </summary>
+    public Character? Owner { get; }
+
+    /// <summary>
     /// Gets or sets the optional maximum number of item slots that the inventory can hold. A
     /// value of <c>null</c> removes any slot restriction.
     /// </summary>
@@ -37,6 +44,17 @@ public class Inventory
     /// </summary>
     public Inventory()
     {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Inventory"/> class bound to a character owner.
+    /// </summary>
+    /// <param name="owner">The character that owns this inventory.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="owner"/> is <c>null</c>.</exception>
+    public Inventory(Character owner)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        Owner = owner;
     }
 
     /// <summary>
@@ -71,6 +89,8 @@ public class Inventory
     {
         ArgumentNullException.ThrowIfNull(item);
 
+        Owner?.SynchronizeCarryCapacity();
+
         if (MaxSlots.HasValue && _items.Count >= MaxSlots.Value)
         {
             Console.WriteLine($"Failed to add {item.Name} to inventory: slot capacity reached ({MaxSlots.Value}).");
@@ -78,14 +98,21 @@ public class Inventory
         }
 
         var prospectiveWeight = GetTotalWeight() + GetEffectiveItemWeight(item);
-        if (MaxWeight.HasValue && prospectiveWeight > MaxWeight.Value)
+        if (MaxWeight.HasValue)
         {
-            Console.WriteLine($"Failed to add {item.Name} to inventory: weight limit exceeded ({prospectiveWeight:F2}/{MaxWeight.Value:F2}).");
-            return false;
+            var capacity = MaxWeight.Value;
+            var loadRatio = capacity <= 0 ? double.PositiveInfinity : prospectiveWeight / capacity;
+
+            if (loadRatio > 2.0)
+            {
+                Console.WriteLine($"Failed to add {item.Name} to inventory: load would exceed 200% capacity ({prospectiveWeight:F2}/{capacity:F2}).");
+                return false;
+            }
         }
 
         _items.Add(item);
         Console.WriteLine($"Added {item.Name} to inventory, total weight {prospectiveWeight:F2}.");
+        Owner?.HandleInventoryWeightChanged(prospectiveWeight);
         return true;
     }
 
@@ -105,6 +132,11 @@ public class Inventory
         Console.WriteLine(wasRemoved
             ? $"Removed {item.Name} from inventory, total weight {currentWeight:F2}."
             : $"Failed to remove {item.Name} from inventory: item not found.");
+
+        if (wasRemoved)
+        {
+            Owner?.HandleInventoryWeightChanged(currentWeight);
+        }
 
         return wasRemoved;
     }
