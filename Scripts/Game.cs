@@ -2,10 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using DynamicRPG.Characters;
+using DynamicRPG.Items;
+using DynamicRPG.Systems.Time;
 using DynamicRPG.World;
 using DynamicRPG.World.Generation;
 using DynamicRPG.World.Hazards;
 using DynamicRPG.World.Locations;
+using DynamicRPG.World.Weather;
 
 #nullable enable
 
@@ -34,8 +38,15 @@ public partial class Game : Node2D
     private Node? _digitalGameMaster;
     private Node? _questManager;
 
+    public TimeManager TimeMgr { get; } = new();
+
     public Region CurrentRegion { get; private set; } = null!;
     public Location CurrentLocation { get; private set; } = null!;
+
+    /// <summary>
+    /// Gets the primary player-controlled character instance.
+    /// </summary>
+    public Character Player { get; private set; } = null!;
 
     /// <summary>
     /// Exposes the generated world regions for read-only access.
@@ -58,11 +69,20 @@ public partial class Game : Node2D
         // TODO: Initialize the quest manager singleton when available.
         _questManager = null;
 
+        TimeMgr.OnNewDay += HandleNewDay;
+
         GenerateWorld();
         InitializeStartingLocation();
+        InitializePlayerCharacter();
+        InitializeWeatherForRegions();
 
         GD.Print($"Mondo generato con {WorldRegions.Count} regioni, posizione iniziale: {CurrentLocation.Name}");
         GD.Print("Game Started");
+    }
+
+    public override void _ExitTree()
+    {
+        TimeMgr.OnNewDay -= HandleNewDay;
     }
 
     public override void _Process(double delta)
@@ -70,6 +90,17 @@ public partial class Game : Node2D
         // TODO: Update global timers or world simulation systems here.
 
         // TODO: Update AI systems or other per-frame managers here.
+    }
+
+    private void HandleNewDay(int currentDay)
+    {
+        // Placeholder hook for future world refresh logic (merchants, resource respawns, etc.).
+        GD.Print($"Nuovo giorno {currentDay} del mese {TimeMgr.CurrentMonth}, anno {TimeMgr.CurrentYear}.");
+
+        foreach (var region in _worldRegions)
+        {
+            TimeMgr.UpdateWeather(region);
+        }
     }
 
     /// <summary>
@@ -113,6 +144,7 @@ public partial class Game : Node2D
 
         foreach (var region in _worldRegions)
         {
+            InitializeRegionClimate(region);
             _regionLocationGenerator.GenerateForRegion(region);
             AssignControllingFaction(region);
             ConnectRegionLocations(region);
@@ -122,6 +154,11 @@ public partial class Game : Node2D
         }
 
         ConnectRegions(_worldRegions);
+    }
+
+    private void InitializeRegionClimate(Region region)
+    {
+        region.BaseClimate = RegionClimateResolver.Resolve(region.EnvironmentType);
     }
 
     private void InitializeStartingLocation()
@@ -135,6 +172,85 @@ public partial class Game : Node2D
             .FirstOrDefault(location => location.Type == LocationType.Village)
             ?? CurrentRegion.Locations.FirstOrDefault()
             ?? throw new InvalidOperationException($"La regione {CurrentRegion.Name} non contiene location valide per l'inizializzazione del giocatore.");
+    }
+
+    private void InitializePlayerCharacter()
+    {
+        Player = new Character
+        {
+            Name = "Aldren il Vigile",
+            Background = "Miliziano di Frontiera",
+            IsPlayer = true,
+            Strength = 10,
+            Dexterity = 10,
+            Constitution = 10,
+            Intelligence = 10,
+            Wisdom = 10,
+            Charisma = 10,
+        };
+
+        Player.RecalculateDerivedAttributes();
+
+        Player.Skills["OneHandedWeapons"] = 15;
+        Player.Skills["Defense"] = 10;
+        Player.Skills["Lore"] = 5;
+
+        Player.LearnTrait(TraitCatalog.Alert);
+
+        var sword = new Item
+        {
+            Name = "Spada Arrugginita",
+            Type = "Weapon",
+            Description = "Una vecchia spada di ordinanza, ancora affidabile nonostante la ruggine.",
+            Weight = 5,
+            Value = 10,
+            MinDamage = 1,
+            MaxDamage = 6,
+            AccuracyBonus = 1,
+        };
+
+        var tunic = new Item
+        {
+            Name = "Tunica Logora",
+            Type = "Armor",
+            Description = "Vestiario imbottito che offre una minima protezione.",
+            Weight = 3,
+            Value = 6,
+            DefenseBonus = 1,
+        };
+
+        var bread = new Item
+        {
+            Name = "Pane Secco",
+            Type = "Consumable",
+            Description = "Un tozzo di pane duro ma nutriente.",
+            Weight = 0.5,
+            Value = 1,
+            Effect = "Ripristina il 10% della fame",
+        };
+
+        var waterskin = new Item
+        {
+            Name = "Otre di Acqua",
+            Type = "Consumable",
+            Description = "Una sacca di cuoio riempita con acqua potabile.",
+            Weight = 1.5,
+            Value = 2,
+            Effect = "Disseta il viaggiatore e riduce la stanchezza",
+        };
+
+        Player.Inventory.AddItem(sword);
+        Player.Inventory.AddItem(tunic);
+        Player.Inventory.AddItem(bread);
+        Player.Inventory.AddItem(waterskin);
+
+        Player.EquipItem(sword);
+        Player.EquipItem(tunic);
+
+        Player.CurrentRegion = CurrentRegion;
+        Player.CurrentLocation = CurrentLocation;
+
+        GD.Print($"Giocatore inizializzato: STR={Player.Strength}, HP={Player.HP}/{Player.MaxHP}, arma equip={Player.EquippedWeapon?.Name}");
     }
 
     private void AssignControllingFaction(Region region)
@@ -170,6 +286,14 @@ public partial class Game : Node2D
         else
         {
             region.ControllingFaction = "Fazione Indipendente";
+        }
+    }
+
+    private void InitializeWeatherForRegions()
+    {
+        foreach (var region in _worldRegions)
+        {
+            TimeMgr.UpdateWeather(region);
         }
     }
 
