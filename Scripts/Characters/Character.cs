@@ -16,6 +16,7 @@ public class Character
     private const int HealthPerConstitutionPoint = 2;
     private const int BaseMana = 10;
     private const int ManaPerIntelligencePoint = 2;
+    private const double ExperienceGrowthFactor = 1.5;
 
     /// <summary>
     /// Gets or sets the in-world display name.
@@ -103,6 +104,11 @@ public class Character
     public int Experience { get; private set; }
 
     /// <summary>
+    /// Gets the experience threshold required to reach the next level.
+    /// </summary>
+    public int ExperienceToNextLevel { get; private set; } = 100;
+
+    /// <summary>
     /// Gets the inventory storing unequipped items.
     /// </summary>
     public Inventory Inventory { get; } = new();
@@ -139,6 +145,27 @@ public class Character
     public Character()
     {
         RecalculateDerivedAttributes();
+    }
+
+    /// <summary>
+    /// Adds experience points to the character and resolves level-ups when thresholds are reached.
+    /// </summary>
+    /// <param name="amount">The amount of experience to award.</param>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="amount"/> is negative.</exception>
+    public void AddExperience(int amount)
+    {
+        if (amount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(amount), amount, "Experience cannot be negative.");
+        }
+
+        Experience += amount;
+
+        while (Experience >= ExperienceToNextLevel)
+        {
+            Experience -= ExperienceToNextLevel;
+            LevelUp();
+        }
     }
 
     /// <summary>
@@ -267,5 +294,28 @@ public class Character
 
         var ratio = Math.Clamp(currentValue, 0, previousMaximum) / (double)previousMaximum;
         return Math.Clamp((int)Math.Round(newMaximum * ratio, MidpointRounding.AwayFromZero), 0, newMaximum);
+    }
+
+    private void LevelUp()
+    {
+        Level++;
+        Strength++;
+        Dexterity++;
+        Constitution++;
+        Intelligence++;
+        Wisdom++;
+        Charisma++;
+
+        RecalculateDerivedAttributes();
+        ExperienceToNextLevel = CalculateNextExperienceThreshold(ExperienceToNextLevel);
+
+        Console.WriteLine($"Level up! New Level: {Level}");
+        Console.WriteLine("Level up! Distribuisci i punti abilità.");
+    }
+
+    private static int CalculateNextExperienceThreshold(int currentThreshold)
+    {
+        var nextThreshold = (int)Math.Ceiling(currentThreshold * ExperienceGrowthFactor);
+        return Math.Max(nextThreshold, currentThreshold + 1);
     }
 }
