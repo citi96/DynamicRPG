@@ -26,5 +26,5 @@ project/assembly_name="DynamicRPG"
 [mono]
 
 project/assembly_name="DynamicRPG"
-project/target_framework="net6.0"
+project/target_framework="net8.0"
 project/load_scripts_on_each_save=true
