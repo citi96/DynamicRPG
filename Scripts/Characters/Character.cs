@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 
 using DynamicRPG.Items;
+using DynamicRPG.World;
+using DynamicRPG.World.Locations;
 
 #nullable enable
 
@@ -27,6 +29,11 @@ public class Character
     /// Gets or sets the in-world display name.
     /// </summary>
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the narrative background assigned to the character.
+    /// </summary>
+    public string Background { get; set; } = string.Empty;
 
     /// <summary>
     /// Gets or sets a value indicating whether this character is controlled by the player.
@@ -69,9 +76,19 @@ public class Character
     public int MaxHealth { get; private set; }
 
     /// <summary>
+    /// Gets the maximum health points using the common HP naming convention.
+    /// </summary>
+    public int MaxHP => MaxHealth;
+
+    /// <summary>
     /// Gets the current health points remaining.
     /// </summary>
     public int CurrentHealth { get; private set; }
+
+    /// <summary>
+    /// Gets the current health points using the common HP naming convention.
+    /// </summary>
+    public int HP => CurrentHealth;
 
     /// <summary>
     /// Gets the maximum mana available for spellcasting.
@@ -169,6 +186,16 @@ public class Character
     /// Gets the armor currently equipped by the character.
     /// </summary>
     public Item? EquippedArmor { get; private set; }
+
+    /// <summary>
+    /// Gets or sets the world region currently hosting the character.
+    /// </summary>
+    public Region? CurrentRegion { get; set; }
+
+    /// <summary>
+    /// Gets or sets the specific location within a region occupied by the character.
+    /// </summary>
+    public Location? CurrentLocation { get; set; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Character"/> class.

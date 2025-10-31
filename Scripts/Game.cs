@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using DynamicRPG.Characters;
+using DynamicRPG.Items;
 using DynamicRPG.Systems.Time;
 using DynamicRPG.World;
 using DynamicRPG.World.Generation;
@@ -42,6 +44,11 @@ public partial class Game : Node2D
     public Location CurrentLocation { get; private set; } = null!;
 
     /// <summary>
+    /// Gets the primary player-controlled character instance.
+    /// </summary>
+    public Character Player { get; private set; } = null!;
+
+    /// <summary>
     /// Exposes the generated world regions for read-only access.
     /// </summary>
     public IReadOnlyList<Region> WorldRegions => _worldRegions;
@@ -66,6 +73,7 @@ public partial class Game : Node2D
 
         GenerateWorld();
         InitializeStartingLocation();
+        InitializePlayerCharacter();
         InitializeWeatherForRegions();
 
         GD.Print($"Mondo generato con {WorldRegions.Count} regioni, posizione iniziale: {CurrentLocation.Name}");
@@ -164,6 +172,85 @@ public partial class Game : Node2D
             .FirstOrDefault(location => location.Type == LocationType.Village)
             ?? CurrentRegion.Locations.FirstOrDefault()
             ?? throw new InvalidOperationException($"La regione {CurrentRegion.Name} non contiene location valide per l'inizializzazione del giocatore.");
+    }
+
+    private void InitializePlayerCharacter()
+    {
+        Player = new Character
+        {
+            Name = "Aldren il Vigile",
+            Background = "Miliziano di Frontiera",
+            IsPlayer = true,
+            Strength = 10,
+            Dexterity = 10,
+            Constitution = 10,
+            Intelligence = 10,
+            Wisdom = 10,
+            Charisma = 10,
+        };
+
+        Player.RecalculateDerivedAttributes();
+
+        Player.Skills["OneHandedWeapons"] = 15;
+        Player.Skills["Defense"] = 10;
+        Player.Skills["Lore"] = 5;
+
+        Player.LearnTrait(TraitCatalog.Alert);
+
+        var sword = new Item
+        {
+            Name = "Spada Arrugginita",
+            Type = "Weapon",
+            Description = "Una vecchia spada di ordinanza, ancora affidabile nonostante la ruggine.",
+            Weight = 5,
+            Value = 10,
+            MinDamage = 1,
+            MaxDamage = 6,
+            AccuracyBonus = 1,
+        };
+
+        var tunic = new Item
+        {
+            Name = "Tunica Logora",
+            Type = "Armor",
+            Description = "Vestiario imbottito che offre una minima protezione.",
+            Weight = 3,
+            Value = 6,
+            DefenseBonus = 1,
+        };
+
+        var bread = new Item
+        {
+            Name = "Pane Secco",
+            Type = "Consumable",
+            Description = "Un tozzo di pane duro ma nutriente.",
+            Weight = 0.5,
+            Value = 1,
+            Effect = "Ripristina il 10% della fame",
+        };
+
+        var waterskin = new Item
+        {
+            Name = "Otre di Acqua",
+            Type = "Consumable",
+            Description = "Una sacca di cuoio riempita con acqua potabile.",
+            Weight = 1.5,
+            Value = 2,
+            Effect = "Disseta il viaggiatore e riduce la stanchezza",
+        };
+
+        Player.Inventory.AddItem(sword);
+        Player.Inventory.AddItem(tunic);
+        Player.Inventory.AddItem(bread);
+        Player.Inventory.AddItem(waterskin);
+
+        Player.EquipItem(sword);
+        Player.EquipItem(tunic);
+
+        Player.CurrentRegion = CurrentRegion;
+        Player.CurrentLocation = CurrentLocation;
+
+        GD.Print($"Giocatore inizializzato: STR={Player.Strength}, HP={Player.HP}/{Player.MaxHP}, arma equip={Player.EquippedWeapon?.Name}");
     }
 
     private void AssignControllingFaction(Region region)
