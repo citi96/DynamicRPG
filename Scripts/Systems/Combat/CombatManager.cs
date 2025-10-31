@@ -80,7 +80,7 @@ public sealed partial class CombatManager : Node
 
         if (!IsCombatActive)
         {
-            GD.Print("Impossibile avviare il combattimento: servono almeno un alleato e un nemico vivi.");
+            LogMessage("Impossibile avviare il combattimento: servono almeno un alleato e un nemico vivi.");
             EndCombat();
             return;
         }
@@ -94,7 +94,7 @@ public sealed partial class CombatManager : Node
 
         if (TurnOrder.Count == 0)
         {
-            GD.Print("Nessun partecipante valido per il combattimento.");
+            LogMessage("Nessun partecipante valido per il combattimento.");
             EndCombat();
             return;
         }
@@ -124,7 +124,7 @@ public sealed partial class CombatManager : Node
             var tieBreaker = _rng.Randf();
 
             initiativeEntries.Add(new InitiativeEntry(combatant, total, combatant.Dexterity, tieBreaker));
-            GD.Print($"Iniziativa di {combatant.Name}: tiro {roll} + DEX {dexterityModifier} + bonus {combatant.InitiativeBonus} = {total}");
+            LogMessage($"Iniziativa di {combatant.Name}: tiro {roll} + DEX {dexterityModifier} + bonus {combatant.InitiativeBonus} = {total}");
         }
 
         var ordered = initiativeEntries
@@ -136,7 +136,7 @@ public sealed partial class CombatManager : Node
 
         TurnOrder.AddRange(ordered);
 
-        GD.Print("Ordine di turno: " + string.Join(", ", TurnOrder.Select(character => character.Name)));
+        LogMessage("Ordine di turno: " + string.Join(", ", TurnOrder.Select(character => character.Name)));
     }
 
     /// <summary>
@@ -169,12 +169,12 @@ public sealed partial class CombatManager : Node
 
         if (currentCombatant.CurrentHealth <= 0)
         {
-            GD.Print($"{currentCombatant.Name} è stato sconfitto prima del suo turno, si passa oltre.");
+            LogMessage($"{currentCombatant.Name} è stato sconfitto prima del suo turno, si passa oltre.");
             EndTurn();
             return;
         }
 
-        GD.Print($"--- Round {RoundNumber}, turno di {currentCombatant.Name} ---");
+        LogMessage($"--- Round {RoundNumber}, turno di {currentCombatant.Name} ---");
 
         if (Enemies.Contains(currentCombatant))
         {
@@ -188,7 +188,7 @@ public sealed partial class CombatManager : Node
             return;
         }
 
-        GD.Print($"{currentCombatant.Name} non appartiene più a nessuna fazione, turno saltato.");
+        LogMessage($"{currentCombatant.Name} non appartiene più a nessuna fazione, turno saltato.");
         EndTurn();
     }
 
@@ -226,12 +226,12 @@ public sealed partial class CombatManager : Node
 
     private void ExecutePlayerTurn(Character player)
     {
-        GD.Print($"{player.Name} (giocatore) esegue un'azione automatica di test.");
+        LogMessage($"{player.Name} (giocatore) esegue un'azione automatica di test.");
 
         var target = Enemies.FirstOrDefault(enemy => enemy.CurrentHealth > 0);
         if (target is null)
         {
-            GD.Print("Nessun nemico valido da attaccare.");
+            LogMessage("Nessun nemico valido da attaccare.");
             EndTurn();
             return;
         }
@@ -246,12 +246,12 @@ public sealed partial class CombatManager : Node
 
     private void ExecuteEnemyTurn(Character enemy)
     {
-        GD.Print($"{enemy.Name} (nemico) agisce con l'IA di base.");
+        LogMessage($"{enemy.Name} (nemico) agisce con l'IA di base.");
 
         var target = Players.FirstOrDefault(player => player.CurrentHealth > 0);
         if (target is null)
         {
-            GD.Print("Nessun giocatore valido da attaccare.");
+            LogMessage("Nessun giocatore valido da attaccare.");
             EndTurn();
             return;
         }
@@ -269,12 +269,12 @@ public sealed partial class CombatManager : Node
         var damage = Math.Max(attacker.AttackRating, 1);
         var defenderWasDefeated = defender.TakeDamage(damage);
 
-        GD.Print($"{attacker.Name} attacca {defender.Name} infliggendo {damage} danni. " +
+        LogMessage($"{attacker.Name} attacca {defender.Name} infliggendo {damage} danni. " +
                  $"HP rimanenti: {defender.CurrentHealth}/{defender.MaxHealth}");
 
         if (defenderWasDefeated)
         {
-            GD.Print($"{defender.Name} è stato sconfitto!");
+            LogMessage($"{defender.Name} è stato sconfitto!");
         }
 
         RemoveDefeatedCombatants();
@@ -321,15 +321,15 @@ public sealed partial class CombatManager : Node
 
         if (!anyPlayerAlive && !anyEnemyAlive)
         {
-            GD.Print("Il combattimento termina senza vincitori.");
+            LogMessage("Il combattimento termina senza vincitori.");
         }
         else if (!anyEnemyAlive)
         {
-            GD.Print("I giocatori vincono il combattimento!");
+            LogMessage("I giocatori vincono il combattimento!");
         }
         else
         {
-            GD.Print("I giocatori sono stati sconfitti.");
+            LogMessage("I giocatori sono stati sconfitti.");
         }
 
         EndCombat();
@@ -348,7 +348,8 @@ public sealed partial class CombatManager : Node
         _combatGrid = null;
     }
 
-    private static int CalculateAbilityModifier(int abilityScore) => (int)Math.Floor((abilityScore - 10) / 2.0);
+    private static int CalculateAbilityModifier(int abilityScore) => 
+        (int)Math.Floor((abilityScore - 10) / 2.0);
 
     private readonly record struct InitiativeEntry(Character Combatant, int Total, int DexterityScore, float TieBreaker);
 
@@ -373,14 +374,14 @@ public sealed partial class CombatManager : Node
 
         _combatGrid = grid;
 
-        GD.Print($"Griglia di combattimento inizializzata: {DefaultGridWidth}x{DefaultGridHeight}.");
+        LogMessage($"Griglia di combattimento inizializzata: {DefaultGridWidth}x{DefaultGridHeight}.");
     }
 
     private void PlaceInitialCombatants()
     {
         if (_combatGrid is null)
         {
-            GD.Print("Impossibile posizionare i combattenti: la griglia non è pronta.");
+            LogMessage("Impossibile posizionare i combattenti: la griglia non è pronta.");
             return;
         }
 
@@ -448,11 +449,11 @@ public sealed partial class CombatManager : Node
             if (assignedPosition is GridPosition finalPosition)
             {
                 combatant.SetPosition(finalPosition.X, finalPosition.Y);
-                GD.Print($"{combatant.Name} ({factionLabel}) posizionato a {finalPosition}.");
+                LogMessage($"{combatant.Name} ({factionLabel}) posizionato a {finalPosition}.");
             }
             else
             {
-                GD.Print($"Nessuna cella libera disponibile per {combatant.Name} ({factionLabel}).");
+                LogMessage($"Nessuna cella libera disponibile per {combatant.Name} ({factionLabel}).");
             }
         }
     }
@@ -523,7 +524,7 @@ public sealed partial class CombatManager : Node
 
         if (path is null || path.Count <= 1)
         {
-            GD.Print($"{character.Name} non può raggiungere la destinazione ({targetX}, {targetY}).");
+            LogMessage($"{character.Name} non può raggiungere la destinazione ({targetX}, {targetY}).");
             return false;
         }
 
@@ -531,7 +532,7 @@ public sealed partial class CombatManager : Node
 
         if (stepsAvailable <= 0)
         {
-            GD.Print($"{character.Name} non ha movimento residuo.");
+            LogMessage($"{character.Name} non ha movimento residuo.");
             return false;
         }
 
@@ -544,14 +545,14 @@ public sealed partial class CombatManager : Node
 
             if (!_combatGrid.TryTransitionOccupant(currentPosition, nextPosition, character))
             {
-                GD.Print($"Il percorso di {character.Name} è stato bloccato in {nextPosition}.");
+                LogMessage($"Il percorso di {character.Name} è stato bloccato in {nextPosition}.");
                 break;
             }
 
             character.SetPosition(nextPosition.X, nextPosition.Y);
             stepsTaken++;
             currentPosition = nextPosition;
-            GD.Print($"{character.Name} avanza a {currentPosition}.");
+            LogMessage($"{character.Name} avanza a {currentPosition}.");
         }
 
         if (stepsTaken <= 0)
@@ -560,8 +561,25 @@ public sealed partial class CombatManager : Node
         }
 
         character.ConsumeMovement(stepsTaken);
-        GD.Print($"{character.Name} termina il movimento a {currentPosition}. Passi usati: {stepsTaken}, residuo: {character.RemainingMovement}.");
+        LogMessage($"{character.Name} termina il movimento a {currentPosition}. Passi usati: {stepsTaken}, residuo: {character.RemainingMovement}.");
 
         return currentPosition.X == targetX && currentPosition.Y == targetY;
+    }
+
+    private static void LogMessage(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        var game = Game.Instance;
+        if (game?.HUD is { } hud)
+        {
+            hud.AddLogMessage(message);
+            return;
+        }
+
+        GD.Print(message);
     }
 }

@@ -10,6 +10,7 @@ using DynamicRPG.World.Generation;
 using DynamicRPG.World.Hazards;
 using DynamicRPG.World.Locations;
 using DynamicRPG.World.Weather;
+using DynamicRPG.UI;
 
 #nullable enable
 
@@ -17,6 +18,8 @@ namespace DynamicRPG;
 
 public partial class Game : Node2D
 {
+    public static Game? Instance { get; private set; }
+
     private static readonly Dictionary<string, string> RegionFactionOverrides = new(StringComparer.OrdinalIgnoreCase)
     {
         ["Montagne del Nord"] = "Clan del Picco del Gelo",
@@ -38,6 +41,8 @@ public partial class Game : Node2D
     private Node? _digitalGameMaster;
     private Node? _questManager;
 
+    public HUD? HUD { get; private set; }
+
     public TimeManager TimeMgr { get; } = new();
 
     public Region CurrentRegion { get; private set; } = null!;
@@ -58,10 +63,20 @@ public partial class Game : Node2D
     /// </summary>
     public IReadOnlyList<Location> WorldLocations => _worldLocations;
 
+    public override void _EnterTree()
+    {
+        base._EnterTree();
+        Instance = this;
+    }
+
     public override void _Ready()
     {
+        base._Ready();
+
         _world = GetNode<Node>("World");
         _ui = GetNode<CanvasLayer>("UI");
+
+        HUD = _ui?.GetNodeOrNull<HUD>("HUD");
 
         // TODO: Initialize the digital game master singleton when available.
         _digitalGameMaster = null;
@@ -83,6 +98,9 @@ public partial class Game : Node2D
     public override void _ExitTree()
     {
         TimeMgr.OnNewDay -= HandleNewDay;
+        Instance = null;
+
+        base._ExitTree();
     }
 
     public override void _Process(double delta)
