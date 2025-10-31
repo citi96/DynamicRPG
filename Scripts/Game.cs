@@ -7,6 +7,7 @@ using DynamicRPG.World;
 using DynamicRPG.World.Generation;
 using DynamicRPG.World.Hazards;
 using DynamicRPG.World.Locations;
+using DynamicRPG.World.Weather;
 
 #nullable enable
 
@@ -65,6 +66,7 @@ public partial class Game : Node2D
 
         GenerateWorld();
         InitializeStartingLocation();
+        InitializeWeatherForRegions();
 
         GD.Print($"Mondo generato con {WorldRegions.Count} regioni, posizione iniziale: {CurrentLocation.Name}");
         GD.Print("Game Started");
@@ -86,6 +88,11 @@ public partial class Game : Node2D
     {
         // Placeholder hook for future world refresh logic (merchants, resource respawns, etc.).
         GD.Print($"Nuovo giorno {currentDay} del mese {TimeMgr.CurrentMonth}, anno {TimeMgr.CurrentYear}.");
+
+        foreach (var region in _worldRegions)
+        {
+            TimeMgr.UpdateWeather(region);
+        }
     }
 
     /// <summary>
@@ -129,6 +136,7 @@ public partial class Game : Node2D
 
         foreach (var region in _worldRegions)
         {
+            InitializeRegionClimate(region);
             _regionLocationGenerator.GenerateForRegion(region);
             AssignControllingFaction(region);
             ConnectRegionLocations(region);
@@ -138,6 +146,11 @@ public partial class Game : Node2D
         }
 
         ConnectRegions(_worldRegions);
+    }
+
+    private void InitializeRegionClimate(Region region)
+    {
+        region.BaseClimate = RegionClimateResolver.Resolve(region.EnvironmentType);
     }
 
     private void InitializeStartingLocation()
@@ -186,6 +199,14 @@ public partial class Game : Node2D
         else
         {
             region.ControllingFaction = "Fazione Indipendente";
+        }
+    }
+
+    private void InitializeWeatherForRegions()
+    {
+        foreach (var region in _worldRegions)
+        {
+            TimeMgr.UpdateWeather(region);
         }
     }
 

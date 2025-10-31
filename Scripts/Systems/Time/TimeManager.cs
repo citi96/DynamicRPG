@@ -1,5 +1,7 @@
 using System;
 using Godot;
+using DynamicRPG.World;
+using DynamicRPG.World.Weather;
 
 namespace DynamicRPG.Systems.Time;
 
@@ -16,6 +18,8 @@ public sealed class TimeManager
 
     private const double NightStartHour = 20.0;
     private const double NightEndHour = 6.0;
+
+    private readonly Random _random;
 
     /// <summary>
     /// Triggered whenever a new in-game day begins.
@@ -50,8 +54,10 @@ public sealed class TimeManager
     /// <summary>
     /// Initializes a new instance of the <see cref="TimeManager"/> class with the default starting time.
     /// </summary>
-    public TimeManager()
+    /// <param name="random">Optional random generator for weather sampling.</param>
+    public TimeManager(Random? random = null)
     {
+        _random = random ?? new Random();
         Reset();
     }
 
@@ -81,6 +87,31 @@ public sealed class TimeManager
         AdvanceDays(daysToAdvance);
 
         GD.Print($"Tempo avanzato di {hours:0.##} ore, ora attuale: {CurrentHour:00.##}, Giorno {CurrentDay}");
+    }
+
+    /// <summary>
+    /// Samples and applies a new weather condition for the provided region.
+    /// </summary>
+    /// <param name="region">Region whose weather should be refreshed.</param>
+    public void UpdateWeather(Region region)
+    {
+        if (region is null)
+        {
+            throw new ArgumentNullException(nameof(region));
+        }
+
+        var profile = WeatherProfileProvider.GetProfile(region.BaseClimate);
+        var nextCondition = profile.Sample(_random);
+
+        var wasInitialized = region.HasWeatherBeenInitialized;
+        var previousCondition = region.CurrentWeather;
+
+        region.ApplyWeather(nextCondition);
+
+        if (!wasInitialized || previousCondition != nextCondition)
+        {
+            GD.Print($"Meteo in {region.Name}: ora {region.CurrentWeather}");
+        }
     }
 
     private void AdvanceDays(int days)
