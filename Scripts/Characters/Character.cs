@@ -152,6 +152,21 @@ public class Character
     public int CurrentMovementAllowance { get; private set; } = DefaultBaseMovementAllowance;
 
     /// <summary>
+    /// Gets the remaining movement points available for the current turn.
+    /// </summary>
+    public int RemainingMovement { get; private set; } = DefaultBaseMovementAllowance;
+
+    /// <summary>
+    /// Gets the current grid position on the combat map along the X axis.
+    /// </summary>
+    public int PositionX { get; private set; }
+
+    /// <summary>
+    /// Gets the current grid position on the combat map along the Y axis.
+    /// </summary>
+    public int PositionY { get; private set; }
+
+    /// <summary>
     /// Gets the collection of permanent traits that the character has learned.
     /// </summary>
     public List<Trait> Traits { get; } = new();
@@ -206,6 +221,40 @@ public class Character
         RecalculateDerivedAttributes();
         SynchronizeCarryCapacity();
         HandleInventoryWeightChanged(Inventory.GetTotalWeight());
+        RemainingMovement = CurrentMovementAllowance;
+    }
+
+    /// <summary>
+    /// Sets the character position on the combat grid.
+    /// </summary>
+    /// <param name="x">The horizontal grid coordinate.</param>
+    /// <param name="y">The vertical grid coordinate.</param>
+    public void SetPosition(int x, int y)
+    {
+        PositionX = x;
+        PositionY = y;
+    }
+
+    /// <summary>
+    /// Restores the remaining movement points at the start of a new turn.
+    /// </summary>
+    public void ResetMovementForNewTurn()
+    {
+        RemainingMovement = CurrentMovementAllowance;
+    }
+
+    /// <summary>
+    /// Consumes the provided amount of movement points for the current turn.
+    /// </summary>
+    /// <param name="amount">The number of tiles traversed.</param>
+    public void ConsumeMovement(int amount)
+    {
+        if (amount <= 0)
+        {
+            return;
+        }
+
+        RemainingMovement = Math.Max(RemainingMovement - amount, 0);
     }
 
     /// <summary>
@@ -485,6 +534,7 @@ public class Character
         };
 
         CurrentMovementAllowance = adjustedAllowance;
+        RemainingMovement = Math.Min(RemainingMovement, CurrentMovementAllowance);
     }
 
     private static void ReportEncumbranceTransition(int previousEncumbrance, int newEncumbrance)
