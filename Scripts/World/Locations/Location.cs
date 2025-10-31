@@ -4,8 +4,8 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using DynamicRPG.Characters;
+using DynamicRPG.World.Hazards;
 using Godot;
-using DynamicRPG.World;
 
 #nullable enable
 
@@ -39,7 +39,7 @@ public sealed class Location
     /// <summary>
     /// Locations directly connected to this location.
     /// </summary>
-    public List<Location> Connections { get; } = new();
+    public List<LocationConnection> ConnectedLocations { get; } = new();
 
     /// <summary>
     /// NPCs present within the location.
