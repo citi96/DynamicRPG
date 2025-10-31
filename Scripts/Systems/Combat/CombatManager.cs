@@ -13,7 +13,13 @@ namespace DynamicRPG.Systems.Combat;
 /// </summary>
 public sealed partial class CombatManager : Node
 {
+    private const int DefaultGridWidth = 10;
+    private const int DefaultGridHeight = 10;
+
     private readonly RandomNumberGenerator _rng = new();
+    private readonly GridPathfinder _pathfinder = new();
+
+    private CombatGrid? _combatGrid;
 
     /// <summary>
     /// Gets the collection of allied combatants.
@@ -46,6 +52,11 @@ public sealed partial class CombatManager : Node
     public bool IsCombatActive { get; private set; }
 
     /// <summary>
+    /// Gets the active combat grid, when available.
+    /// </summary>
+    public CombatGrid? CurrentGrid => _combatGrid;
+
+    /// <summary>
     /// Initializes and starts a combat encounter with the provided participants.
     /// </summary>
     /// <param name="players">Collection of allied combatants.</param>
@@ -73,6 +84,10 @@ public sealed partial class CombatManager : Node
             EndCombat();
             return;
         }
+
+        InitializeArenaLayout();
+        PlaceInitialCombatants();
+        ResetMovementAllowancesForParticipants();
 
         _rng.Randomize();
         RollInitiative();
@@ -149,6 +164,8 @@ public sealed partial class CombatManager : Node
 
         CurrentTurnIndex = Math.Clamp(CurrentTurnIndex, 0, TurnOrder.Count - 1);
         var currentCombatant = TurnOrder[CurrentTurnIndex];
+
+        currentCombatant.ResetMovementForNewTurn();
 
         if (currentCombatant.CurrentHealth <= 0)
         {
@@ -266,6 +283,14 @@ public sealed partial class CombatManager : Node
 
     private void RemoveDefeatedCombatants()
     {
+        if (_combatGrid is not null)
+        {
+            foreach (var defeated in Players.Concat(Enemies).Where(character => character.CurrentHealth <= 0).ToList())
+            {
+                _combatGrid.Vacate(new GridPosition(defeated.PositionX, defeated.PositionY), defeated);
+            }
+        }
+
         var removedFromTurnOrder = TurnOrder.RemoveAll(character => character.CurrentHealth <= 0);
 
         if (removedFromTurnOrder > 0)
@@ -319,9 +344,224 @@ public sealed partial class CombatManager : Node
         CurrentTurnIndex = 0;
         RoundNumber = 0;
         IsCombatActive = false;
+        _combatGrid?.ClearOccupants();
+        _combatGrid = null;
     }
 
     private static int CalculateAbilityModifier(int abilityScore) => (int)Math.Floor((abilityScore - 10) / 2.0);
 
     private readonly record struct InitiativeEntry(Character Combatant, int Total, int DexterityScore, float TieBreaker);
+
+    private void InitializeArenaLayout()
+    {
+        var grid = new CombatGrid(DefaultGridWidth, DefaultGridHeight, TileType.Empty);
+
+        for (var x = 0; x < DefaultGridWidth; x++)
+        {
+            grid.SetTile(new GridPosition(x, 0), TileType.Obstacle);
+            grid.SetTile(new GridPosition(x, DefaultGridHeight - 1), TileType.Obstacle);
+        }
+
+        for (var y = 0; y < DefaultGridHeight; y++)
+        {
+            grid.SetTile(new GridPosition(0, y), TileType.Obstacle);
+            grid.SetTile(new GridPosition(DefaultGridWidth - 1, y), TileType.Obstacle);
+        }
+
+        grid.SetTile(new GridPosition(4, 5), TileType.Obstacle);
+        grid.SetTile(new GridPosition(6, 7), TileType.Obstacle);
+
+        _combatGrid = grid;
+
+        GD.Print($"Griglia di combattimento inizializzata: {DefaultGridWidth}x{DefaultGridHeight}.");
+    }
+
+    private void PlaceInitialCombatants()
+    {
+        if (_combatGrid is null)
+        {
+            GD.Print("Impossibile posizionare i combattenti: la griglia non è pronta.");
+            return;
+        }
+
+        var playerSpawns = new List<GridPosition>
+        {
+            new(2, 2),
+            new(3, 2),
+            new(2, 3),
+            new(3, 3),
+            new(2, 4),
+            new(3, 4),
+        };
+
+        var enemySpawns = new List<GridPosition>
+        {
+            new(7, 7),
+            new(6, 7),
+            new(7, 6),
+            new(6, 6),
+            new(7, 5),
+            new(6, 5),
+        };
+
+        PlaceCombatantsAtPositions(Players, playerSpawns, "alleato");
+        PlaceCombatantsAtPositions(Enemies, enemySpawns, "nemico");
+    }
+
+    private void PlaceCombatantsAtPositions(
+        IEnumerable<Character> combatants,
+        IReadOnlyList<GridPosition> spawnPositions,
+        string factionLabel)
+    {
+        if (_combatGrid is null)
+        {
+            return;
+        }
+
+        var index = 0;
+
+        foreach (var combatant in combatants)
+        {
+            if (combatant is null)
+            {
+                continue;
+            }
+
+            GridPosition? assignedPosition = null;
+
+            while (index < spawnPositions.Count && assignedPosition is null)
+            {
+                var spawn = spawnPositions[index];
+                index++;
+
+                if (!_combatGrid.CanOccupy(spawn, combatant))
+                {
+                    continue;
+                }
+
+                if (_combatGrid.TryOccupy(spawn, combatant))
+                {
+                    assignedPosition = spawn;
+                }
+            }
+
+            if (assignedPosition is GridPosition finalPosition)
+            {
+                combatant.SetPosition(finalPosition.X, finalPosition.Y);
+                GD.Print($"{combatant.Name} ({factionLabel}) posizionato a {finalPosition}.");
+            }
+            else
+            {
+                GD.Print($"Nessuna cella libera disponibile per {combatant.Name} ({factionLabel}).");
+            }
+        }
+    }
+
+    private void ResetMovementAllowancesForParticipants()
+    {
+        foreach (var combatant in Players.Concat(Enemies))
+        {
+            combatant.ResetMovementForNewTurn();
+        }
+    }
+
+    public bool CanMoveTo(Character character, int targetX, int targetY)
+    {
+        ArgumentNullException.ThrowIfNull(character);
+
+        if (!IsCombatActive || _combatGrid is null)
+        {
+            return false;
+        }
+
+        if (character.RemainingMovement <= 0)
+        {
+            return false;
+        }
+
+        var target = new GridPosition(targetX, targetY);
+
+        if (!_combatGrid.IsWithinBounds(target))
+        {
+            return false;
+        }
+
+        return _combatGrid.CanOccupy(target, character);
+    }
+
+    public IReadOnlyList<GridPosition>? GetPath(Character character, int targetX, int targetY)
+    {
+        ArgumentNullException.ThrowIfNull(character);
+
+        if (!CanMoveTo(character, targetX, targetY))
+        {
+            return null;
+        }
+
+        var grid = _combatGrid!;
+        var start = new GridPosition(character.PositionX, character.PositionY);
+        var destination = new GridPosition(targetX, targetY);
+
+        return _pathfinder.FindPath(grid, character, start, destination);
+    }
+
+    public bool MoveCharacter(Character character, int targetX, int targetY)
+    {
+        ArgumentNullException.ThrowIfNull(character);
+
+        if (!IsCombatActive || _combatGrid is null)
+        {
+            return false;
+        }
+
+        if (targetX == character.PositionX && targetY == character.PositionY)
+        {
+            return false;
+        }
+
+        var path = GetPath(character, targetX, targetY);
+
+        if (path is null || path.Count <= 1)
+        {
+            GD.Print($"{character.Name} non può raggiungere la destinazione ({targetX}, {targetY}).");
+            return false;
+        }
+
+        var stepsAvailable = Math.Min(character.RemainingMovement, path.Count - 1);
+
+        if (stepsAvailable <= 0)
+        {
+            GD.Print($"{character.Name} non ha movimento residuo.");
+            return false;
+        }
+
+        var stepsTaken = 0;
+        var currentPosition = new GridPosition(character.PositionX, character.PositionY);
+
+        for (var i = 1; i < path.Count && stepsTaken < stepsAvailable; i++)
+        {
+            var nextPosition = path[i];
+
+            if (!_combatGrid.TryTransitionOccupant(currentPosition, nextPosition, character))
+            {
+                GD.Print($"Il percorso di {character.Name} è stato bloccato in {nextPosition}.");
+                break;
+            }
+
+            character.SetPosition(nextPosition.X, nextPosition.Y);
+            stepsTaken++;
+            currentPosition = nextPosition;
+            GD.Print($"{character.Name} avanza a {currentPosition}.");
+        }
+
+        if (stepsTaken <= 0)
+        {
+            return false;
+        }
+
+        character.ConsumeMovement(stepsTaken);
+        GD.Print($"{character.Name} termina il movimento a {currentPosition}. Passi usati: {stepsTaken}, residuo: {character.RemainingMovement}.");
+
+        return currentPosition.X == targetX && currentPosition.Y == targetY;
+    }
 }
