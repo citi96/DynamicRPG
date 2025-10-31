@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Godot;
+using DynamicRPG.Systems.Time;
 using DynamicRPG.World;
 using DynamicRPG.World.Generation;
 using DynamicRPG.World.Hazards;
@@ -34,6 +35,8 @@ public partial class Game : Node2D
     private Node? _digitalGameMaster;
     private Node? _questManager;
 
+    public TimeManager TimeMgr { get; } = new();
+
     public Region CurrentRegion { get; private set; } = null!;
     public Location CurrentLocation { get; private set; } = null!;
 
@@ -58,6 +61,8 @@ public partial class Game : Node2D
         // TODO: Initialize the quest manager singleton when available.
         _questManager = null;
 
+        TimeMgr.OnNewDay += HandleNewDay;
+
         GenerateWorld();
         InitializeStartingLocation();
 
@@ -65,11 +70,22 @@ public partial class Game : Node2D
         GD.Print("Game Started");
     }
 
+    public override void _ExitTree()
+    {
+        TimeMgr.OnNewDay -= HandleNewDay;
+    }
+
     public override void _Process(double delta)
     {
         // TODO: Update global timers or world simulation systems here.
 
         // TODO: Update AI systems or other per-frame managers here.
+    }
+
+    private void HandleNewDay(int currentDay)
+    {
+        // Placeholder hook for future world refresh logic (merchants, resource respawns, etc.).
+        GD.Print($"Nuovo giorno {currentDay} del mese {TimeMgr.CurrentMonth}, anno {TimeMgr.CurrentYear}.");
     }
 
     /// <summary>
