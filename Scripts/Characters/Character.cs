@@ -114,6 +114,16 @@ public class Character
     public Inventory Inventory { get; } = new();
 
     /// <summary>
+    /// Gets the collection of permanent traits that the character has learned.
+    /// </summary>
+    public List<Trait> Traits { get; } = new();
+
+    /// <summary>
+    /// Gets the cumulative initiative bonus granted by traits and other permanent effects.
+    /// </summary>
+    public int InitiativeBonus { get; private set; }
+
+    /// <summary>
     /// Gets a mutable dictionary of skills and their levels.
     /// </summary>
     public Dictionary<string, int> Skills { get; } = new(StringComparer.OrdinalIgnoreCase)
@@ -145,6 +155,26 @@ public class Character
     public Character()
     {
         RecalculateDerivedAttributes();
+    }
+
+    /// <summary>
+    /// Learns the provided trait, applying its effects if it was not already known.
+    /// </summary>
+    /// <param name="trait">The trait to learn.</param>
+    /// <returns><c>true</c> when the trait is newly learned; otherwise <c>false</c>.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="trait"/> is <c>null</c>.</exception>
+    public bool LearnTrait(Trait trait)
+    {
+        ArgumentNullException.ThrowIfNull(trait);
+
+        if (Traits.Exists(existing => existing.Equals(trait)))
+        {
+            return false;
+        }
+
+        Traits.Add(trait);
+        trait.Apply(this);
+        return true;
     }
 
     /// <summary>
@@ -317,5 +347,38 @@ public class Character
     {
         var nextThreshold = (int)Math.Ceiling(currentThreshold * ExperienceGrowthFactor);
         return Math.Max(nextThreshold, currentThreshold + 1);
+    }
+
+    /// <summary>
+    /// Applies a permanent increase to the initiative bonus granted to the character.
+    /// </summary>
+    /// <param name="bonusAmount">The amount to add to the initiative bonus.</param>
+    internal void IncreaseInitiativeBonus(int bonusAmount)
+    {
+        if (bonusAmount <= 0)
+        {
+            return;
+        }
+
+        InitiativeBonus += bonusAmount;
+    }
+
+    /// <summary>
+    /// Applies a permanent increase to the maximum carry weight of the character's inventory.
+    /// </summary>
+    /// <param name="additionalWeight">The amount of weight capacity to add.</param>
+    internal void IncreaseInventoryCapacity(double additionalWeight)
+    {
+        if (additionalWeight <= 0)
+        {
+            return;
+        }
+
+        if (Inventory.MaxWeight is null)
+        {
+            return;
+        }
+
+        Inventory.MaxWeight += additionalWeight;
     }
 }
