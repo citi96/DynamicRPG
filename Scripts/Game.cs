@@ -1,4 +1,5 @@
 using Godot;
+using System.ComponentModel;
 
 namespace DynamicRPG;
 
@@ -12,11 +13,9 @@ public partial class Game : Node
         Pause
     }
 
-    [Export]
-    public string ExplorationScenePath { get; set; } = "res://scenes/Exploration.tscn";
+    [Export] public PackedScene ExplorationScene { get; set; } = default!;
 
-    [Export]
-    public string CombatScenePath { get; set; } = "res://scenes/Combat.tscn";
+    [Export] public PackedScene CombatScene { get; set; } = default;
 
     public GameState CurrentState { get; private set; } = GameState.Exploration;
 
@@ -29,21 +28,21 @@ public partial class Game : Node
     private void StartExploration()
     {
         CurrentState = GameState.Exploration;
-        LoadScene(ExplorationScenePath);
+        LoadScene(ExplorationScene);
     }
 
-    public void LoadScene(string path)
+    public void LoadScene(PackedScene scene)
     {
-        if (string.IsNullOrEmpty(path))
+        if (scene == null)
         {
             GD.PushWarning("LoadScene chiamato con un percorso vuoto.");
             return;
         }
 
-        var error = GetTree().ChangeSceneToFile(path);
+        var error = GetTree().ChangeSceneToPacked(scene);
         if (error != Error.Ok)
         {
-            GD.PushError($"Impossibile caricare la scena: {path} (errore {error}).");
+            GD.PushError($"Impossibile caricare la scena: {scene} (errore {error}).");
         }
     }
 
@@ -55,7 +54,7 @@ public partial class Game : Node
         }
 
         CurrentState = GameState.Combat;
-        LoadScene(CombatScenePath);
+        LoadScene(CombatScene);
     }
 
     public void ExitCombat()
@@ -66,7 +65,7 @@ public partial class Game : Node
         }
 
         CurrentState = GameState.Exploration;
-        LoadScene(ExplorationScenePath);
+        LoadScene(ExplorationScene);
     }
 
     public void EnterDialog()
