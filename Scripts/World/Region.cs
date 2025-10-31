@@ -2,6 +2,7 @@ namespace DynamicRPG.World;
 
 using System;
 using System.Collections.Generic;
+using DynamicRPG.World.Hazards;
 using DynamicRPG.World.Locations;
 
 #nullable enable
@@ -26,6 +27,11 @@ public sealed class Region
     /// Locations that belong to this region.
     /// </summary>
     public List<Location> Locations { get; } = new();
+
+    /// <summary>
+    /// Environmental hazards that affect travel within or around the region.
+    /// </summary>
+    public List<Hazard> EnvironmentalHazards { get; } = new();
 
     /// <summary>
     /// Identifies the faction currently in control of the region. Placeholder for a dedicated Faction type.
