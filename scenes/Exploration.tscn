@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://exploration"]
+
+[node name="Exploration" type="Node2D"]
+
+[node name="Info" type="Label" parent="."]
+text = "Scena di esplorazione"
