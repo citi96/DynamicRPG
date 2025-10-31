@@ -4,6 +4,7 @@ using System.Linq;
 using Godot;
 using DynamicRPG.Characters;
 using DynamicRPG.Items;
+using DynamicRPG.Systems.Combat;
 using DynamicRPG.Systems.Time;
 using DynamicRPG.World;
 using DynamicRPG.World.Generation;
@@ -11,6 +12,7 @@ using DynamicRPG.World.Hazards;
 using DynamicRPG.World.Locations;
 using DynamicRPG.World.Weather;
 using DynamicRPG.UI;
+using DynamicRPG.World.Exploration;
 
 #nullable enable
 
@@ -35,6 +37,8 @@ public partial class Game : Node2D
     private readonly RegionLocationGenerator _regionLocationGenerator = new();
 
     private Node? _world;
+    private Node? _explorationRoot;
+    private ExplorationController? _explorationController;
     private CanvasLayer? _ui;
 
     // Placeholder references for global singletons to be initialized later.
@@ -42,6 +46,12 @@ public partial class Game : Node2D
     private Node? _questManager;
 
     public HUD? HUD { get; private set; }
+
+    public CombatManager? CombatManager { get; private set; }
+
+    public PlayerController? PlayerController { get; private set; }
+
+    public Node? ExplorationRoot => _explorationRoot;
 
     public TimeManager TimeMgr { get; } = new();
 
@@ -74,6 +84,11 @@ public partial class Game : Node2D
         base._Ready();
 
         _world = GetNode<Node>("World");
+        _explorationRoot = _world.GetNodeOrNull<Node>("Exploration");
+        _explorationController = _explorationRoot as ExplorationController;
+        PlayerController = _explorationController?.Player
+            ?? _explorationRoot?.GetNodeOrNull<PlayerController>("World/Player");
+        CombatManager = _world.GetNodeOrNull<CombatManager>("Combat");
         _ui = GetNode<CanvasLayer>("UI");
 
         HUD = _ui?.GetNodeOrNull<HUD>("HUD");
@@ -91,6 +106,8 @@ public partial class Game : Node2D
         InitializePlayerCharacter();
         InitializeWeatherForRegions();
 
+        _explorationController?.RefreshFromGame();
+
         GD.Print($"Mondo generato con {WorldRegions.Count} regioni, posizione iniziale: {CurrentLocation.Name}");
         GD.Print("Game Started");
     }
@@ -98,6 +115,13 @@ public partial class Game : Node2D
     public override void _ExitTree()
     {
         TimeMgr.OnNewDay -= HandleNewDay;
+        CombatManager = null;
+        _explorationRoot = null;
+        _explorationController = null;
+        PlayerController = null;
+        HUD = null;
+        _ui = null;
+        _world = null;
         Instance = null;
 
         base._ExitTree();
