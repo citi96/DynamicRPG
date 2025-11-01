@@ -36,7 +36,7 @@ public partial class Game : Node2D
     private readonly List<Location> _worldLocations = new();
     private readonly RegionLocationGenerator _regionLocationGenerator = new();
 
-    private Node? _world;
+    private Node2D? _world;
     private Node? _explorationRoot;
     private ExplorationController? _explorationController;
     private CanvasLayer? _ui;
@@ -83,7 +83,7 @@ public partial class Game : Node2D
     {
         base._Ready();
 
-        _world = GetNode<Node>("World");
+        _world = GetNode<Node2D>("World");
         _explorationRoot = _world.GetNodeOrNull<Node>("Exploration");
         _explorationController = _explorationRoot as ExplorationController;
         PlayerController = _explorationController?.Player
