@@ -37,6 +37,7 @@ public partial class Game : Node2D
     private readonly RegionLocationGenerator _regionLocationGenerator = new();
 
     private Node2D? _world;
+    private TileMapLayer? _worldTileLayer;
     private Node? _explorationRoot;
     private ExplorationController? _explorationController;
     private CanvasLayer? _ui;
@@ -102,6 +103,7 @@ public partial class Game : Node2D
         TimeMgr.OnNewDay += HandleNewDay;
 
         GenerateWorld();
+        CreateMap();
         InitializeStartingLocation();
         InitializePlayerCharacter();
         InitializeWeatherForRegions();
@@ -143,6 +145,118 @@ public partial class Game : Node2D
         {
             TimeMgr.UpdateWeather(region);
         }
+    }
+
+    /// <summary>
+    /// Creates a simple tile-based visualization of the generated world biomes.
+    /// </summary>
+    private void CreateMap()
+    {
+        if (_world is null)
+        {
+            GD.PushWarning("World node non trovato: impossibile creare la mappa.");
+            return;
+        }
+
+        if (_worldTileLayer is not null && _worldTileLayer.IsInsideTree())
+        {
+            _worldTileLayer.QueueFree();
+            _worldTileLayer = null;
+        }
+
+        if (_worldRegions.Count == 0)
+        {
+            return;
+        }
+
+        // Creazione della TileMapLayer e del TileSet base.
+        var tileMapLayer = new TileMapLayer
+        {
+            Name = "BiomeMap",
+        };
+
+        var tileSet = new TileSet
+        {
+            TileSize = new Vector2I(32, 32),
+        };
+        tileMapLayer.TileSet = tileSet;
+
+        // Dizionario per riutilizzare le texture monocromatiche per biomi simili.
+        var biomeTileSources = new Dictionary<Color, (int sourceId, TileSetAtlasSource source)>();
+
+        // Posizionamento dei tile su una griglia quadrata in base al numero di regioni generate.
+        var regionCount = _worldRegions.Count;
+        var columns = Mathf.CeilToInt(Mathf.Sqrt(regionCount));
+
+        for (var index = 0; index < regionCount; index++)
+        {
+            var region = _worldRegions[index];
+            var biomeColor = GetBiomeColor(region.EnvironmentType);
+
+            if (!biomeTileSources.TryGetValue(biomeColor, out var atlasData))
+            {
+                // Generazione della texture 32x32 riempita con il colore del bioma.
+                var image = Image.CreateEmpty(32, 32, false, Image.Format.Rgba8);
+                image.Fill(biomeColor);
+                var texture = ImageTexture.CreateFromImage(image);
+
+                // Creazione della tile nel TileSet usando la texture appena generata.
+                var atlasSource = new TileSetAtlasSource
+                {
+                    Texture = texture,
+                    TextureRegionSize = new Vector2I(32, 32),
+                };
+                var sourceId = tileSet.AddSource(atlasSource);
+                atlasSource.CreateTile(Vector2I.Zero);
+
+                atlasData = (sourceId, atlasSource);
+                biomeTileSources.Add(biomeColor, atlasData);
+            }
+
+            var column = index % columns;
+            var row = index / columns;
+            var cellPosition = new Vector2I(column, row);
+
+            // Riempimento della griglia con il tile associato al bioma.
+            tileMapLayer.SetCell(cellPosition, atlasData.sourceId, Vector2I.Zero);
+        }
+
+        tileMapLayer.TileSet = tileSet;
+
+        _world.AddChild(tileMapLayer);
+        _worldTileLayer = tileMapLayer;
+    }
+
+    private static Color GetBiomeColor(string environmentType)
+    {
+        var lowered = environmentType.ToLowerInvariant();
+
+        if (lowered.Contains("tundra") || lowered.Contains("ghiacci"))
+        {
+            return new Color(0.65f, 0.85f, 1.0f);
+        }
+
+        if (lowered.Contains("foresta") || lowered.Contains("bosco"))
+        {
+            return new Color(0.2f, 0.6f, 0.2f);
+        }
+
+        if (lowered.Contains("deserto") || lowered.Contains("dune"))
+        {
+            return new Color(0.9f, 0.8f, 0.55f);
+        }
+
+        if (lowered.Contains("palud") || lowered.Contains("bruma"))
+        {
+            return new Color(0.35f, 0.45f, 0.25f);
+        }
+
+        if (lowered.Contains("rovine") || lowered.Contains("citt"))
+        {
+            return new Color(0.5f, 0.5f, 0.55f);
+        }
+
+        return new Color(0.6f, 0.6f, 0.6f);
     }
 
     /// <summary>
