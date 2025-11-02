@@ -1,28 +1,28 @@
 [gd_scene load_steps=3 format=3 uid="uid://hudscene"]
 
-[ext_resource type="Script" uid="uid://hudscript" path="res://Scripts/UI/HUD.cs" id="1"]
-[ext_resource type="Script" uid="uid://actionmenu" path="res://Scripts/UI/ActionMenu.cs" id="2"]
+[ext_resource type="Script" uid="uid://qdxscg6so5si" path="res://Scripts/UI/HUD.cs" id="1"]
+[ext_resource type="Script" uid="uid://ctionmenu" path="res://Scripts/UI/ActionMenu.cs" id="2"]
 
 [node name="HUD" type="Control"]
-script = ExtResource("1")
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+script = ExtResource("1")
 
 [node name="ActionPanel" type="Panel" parent="."]
 visible = false
+self_modulate = Color(1, 1, 1, 0.75)
 layout_mode = 1
-anchor_left = 0.0
+anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 24.0
 offset_top = -260.0
 offset_right = 224.0
 offset_bottom = -56.0
-self_modulate = Color(1, 1, 1, 0.75)
 grow_horizontal = 0
 grow_vertical = 0
 script = ExtResource("2")
@@ -57,12 +57,10 @@ text = "Termina Turno"
 [node name="LogPanel" type="Panel" parent="."]
 layout_mode = 1
 anchors_preset = 12
-anchor_left = 0.0
-anchor_right = 1.0
 anchor_top = 1.0
+anchor_right = 1.0
 anchor_bottom = 1.0
 offset_top = -180.0
-min_size = Vector2(0, 180)
 grow_horizontal = 2
 grow_vertical = 0
 
@@ -73,7 +71,5 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-scroll_following = true
-selection_enabled = false
 bbcode_enabled = true
-
+scroll_following = true

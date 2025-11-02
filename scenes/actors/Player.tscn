@@ -1,7 +1,7 @@
 [gd_scene load_steps=4 format=3 uid="uid://player"]
 
-[ext_resource type="Script" uid="uid://playercontroller" path="res://Scripts/Characters/PlayerController.cs" id="1"]
-[ext_resource type="Texture2D" uid="uid://projecticon" path="res://icon.svg" id="2"]
+[ext_resource type="Script" uid="uid://cuanqktxxxgnx" path="res://Scripts/Characters/PlayerController.cs" id="1"]
+[ext_resource type="Texture2D" uid="uid://csklvg7xcrha4" path="res://icon.svg" id="2"]
 
 [sub_resource type="RectangleShape2D" id="1"]
 size = Vector2(12, 18)
@@ -11,17 +11,15 @@ script = ExtResource("1")
 CameraPath = NodePath("Camera2D")
 
 [node name="Sprite" type="Sprite2D" parent="."]
-texture = ExtResource("2")
 scale = Vector2(0.1, 0.1)
+texture = ExtResource("2")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("1")
 
 [node name="Camera2D" type="Camera2D" parent="."]
-limit_left = -2000
-limit_right = 2000
-limit_top = -2000
-limit_bottom = 2000
 zoom = Vector2(1.4, 1.4)
-smoothing_enabled = true
-smoothing_speed = 5.0
+limit_left = -2000
+limit_top = -2000
+limit_right = 2000
+limit_bottom = 2000
