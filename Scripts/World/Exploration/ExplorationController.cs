@@ -57,7 +57,7 @@ public partial class ExplorationController : Node2D
     public Node2D? FoliageContainer { get; set; }
 
     [Export]
-    public Node? EnemyContainer { get; set; }
+    public Node2D? EnemyContainer { get; set; }
 
     [Export]
     public PackedScene? EnemyEncounterScene { get; set; }
@@ -104,8 +104,36 @@ public partial class ExplorationController : Node2D
         PlayerSpawn ??= GetNodeOrNull<Marker2D>("World/PlayerSpawn");
         TerrainTileMap ??= _worldRoot?.GetNodeOrNull<TileMap>("Terrain");
         FoliageContainer ??= _worldRoot?.GetNodeOrNull<Node2D>("Foliage");
-        _enemyContainer = (EnemyContainer as Node2D) ?? _worldRoot?.GetNodeOrNull<Node2D>("Encounters");
+        _enemyContainer = EnemyContainer ?? _worldRoot?.GetNodeOrNull<Node2D>("Encounters");
 
+        RebuildWorld();
+    }
+
+    public void RefreshFromGame()
+    {
+        UpdateLocationInfo();
+    }
+
+    /// <summary>
+    /// Applies the provided theme to the exploration view and rebuilds the procedural content.
+    /// </summary>
+    public void ApplyTheme(ExplorationTheme theme)
+    {
+        GrassColor = theme.GrassColor;
+        PathColor = theme.PathColor;
+        WaterColor = theme.WaterColor;
+        StoneColor = theme.StoneColor;
+        TreeCount = theme.TreeCount;
+        NoiseFrequency = theme.NoiseFrequency;
+
+        RebuildWorld();
+    }
+
+    /// <summary>
+    /// Regenerates the procedural terrain, foliage and encounters.
+    /// </summary>
+    public void RebuildWorld()
+    {
         GenerateTerrain();
         PopulateFoliage();
         SpawnEnemyEncounters();
@@ -113,11 +141,6 @@ public partial class ExplorationController : Node2D
 
         UpdateLocationInfo();
         UpdateHelpLabel();
-    }
-
-    public void RefreshFromGame()
-    {
-        UpdateLocationInfo();
     }
 
     private void GenerateTerrain()
@@ -594,6 +617,6 @@ public partial class ExplorationController : Node2D
             return;
         }
 
-        HelpLabel.Text = "WASD o frecce per muoverti. Premi Esc per uscire.";
+        HelpLabel.Text = "WASD o frecce per muoverti. Avvicinati alle sfere rosse per avviare un incontro.";
     }
 }
