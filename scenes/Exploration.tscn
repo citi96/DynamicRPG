@@ -1,55 +1,41 @@
-[gd_scene load_steps=8 format=3 uid="uid://exploration"]
+[gd_scene load_steps=6 format=3 uid="uid://exploration"]
 
 [ext_resource type="PackedScene" uid="uid://player" path="res://scenes/actors/Player.tscn" id="1"]
 [ext_resource type="Script" uid="uid://explorationcontroller" path="res://Scripts/World/Exploration/ExplorationController.cs" id="2"]
-
-[sub_resource type="RectangleShape2D" id="1"]
-size = Vector2(120, 80)
-
-[sub_resource type="RectangleShape2D" id="2"]
-size = Vector2(80, 60)
+[ext_resource type="PackedScene" path="res://scenes/actors/EnemyEncounter.tscn" id="3"]
 
 [node name="Exploration" type="Node2D"]
 script = ExtResource("2")
-PlayableArea = Rect2(-640, -360, 1280, 720)
+PlayableArea = Rect2(-1536, -1152, 3072, 2304)
+MapWidth = 96
+MapHeight = 72
+TileSize = 32
+TreeCount = 220
+NoiseFrequency = 0.045
+GrassColor = Color(0.188235, 0.352941, 0.219608, 1)
+PathColor = Color(0.47451, 0.34902, 0.203922, 1)
+WaterColor = Color(0.137255, 0.337255, 0.521569, 1)
+StoneColor = Color(0.396078, 0.396078, 0.396078, 1)
+EncounterCount = 6
+EnemyEncounterScene = ExtResource("3")
 
 [node name="Regions" type="Node" parent="."]
 
 [node name="Locations" type="Node" parent="Regions"]
 
 [node name="World" type="Node2D" parent="."]
+y_sort_enabled = true
 
-[node name="Ground" type="Polygon2D" parent="World"]
-polygon = PackedVector2Array(-640, -360, 640, -360, 640, 360, -640, 360)
-color = Color(0.188235, 0.352941, 0.219608, 1)
+[node name="Terrain" type="TileMap" parent="World"]
+y_sort_enabled = false
 
-[node name="Path" type="Polygon2D" parent="World"]
-polygon = PackedVector2Array(-500, -40, 500, -40, 500, 40, -500, 40)
-color = Color(0.47451, 0.34902, 0.203922, 1)
+[node name="Foliage" type="Node2D" parent="World"]
 
-[node name="Trees" type="Node2D" parent="World"]
-
-[node name="Tree1" type="StaticBody2D" parent="World/Trees"]
-position = Vector2(-320, -120)
-
-[node name="Tree1Collider" type="CollisionShape2D" parent="World/Trees/Tree1"]
-shape = SubResource("1")
-
-[node name="Tree1Sprite" type="Polygon2D" parent="World/Trees/Tree1"]
-polygon = PackedVector2Array(-60, -80, 0, -140, 60, -80, 40, 40, -40, 40)
-color = Color(0.203922, 0.556863, 0.27451, 1)
-
-[node name="Tree2" type="StaticBody2D" parent="World/Trees"]
-position = Vector2(280, 140)
-
-[node name="Tree2Collider" type="CollisionShape2D" parent="World/Trees/Tree2"]
-shape = SubResource("2")
-
-[node name="Tree2Sprite" type="Polygon2D" parent="World/Trees/Tree2"]
-polygon = PackedVector2Array(-40, -60, 0, -120, 40, -60, 20, 40, -20, 40)
-color = Color(0.160784, 0.458824, 0.211765, 1)
+[node name="Encounters" type="Node2D" parent="World"]
+y_sort_enabled = true
 
 [node name="PlayerSpawn" type="Marker2D" parent="World"]
+position = Vector2(0, 0)
 
 [node name="Player" parent="World" instance=ExtResource("1")]
 

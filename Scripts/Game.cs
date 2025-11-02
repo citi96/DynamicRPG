@@ -415,6 +415,54 @@ public partial class Game : Node2D
         GD.Print($"Giocatore inizializzato: STR={Player.Strength}, HP={Player.HP}/{Player.MaxHP}, arma equip={Player.EquippedWeapon?.Name}");
     }
 
+    /// <summary>
+    /// Attempts to start a combat encounter from the exploration scene against the provided enemies.
+    /// </summary>
+    /// <param name="enemies">The enemy combatants that should join the encounter.</param>
+    /// <param name="encounterDescription">Optional narrative description displayed to the player.</param>
+    /// <returns><c>true</c> when the encounter has been started; otherwise <c>false</c>.</returns>
+    public bool TryStartExplorationEncounter(IEnumerable<Character> enemies, string? encounterDescription = null)
+    {
+        ArgumentNullException.ThrowIfNull(enemies);
+
+        if (CombatManager is null)
+        {
+            GD.PushWarning("Impossibile avviare il combattimento: nessun CombatManager attivo.");
+            return false;
+        }
+
+        if (Player is null)
+        {
+            GD.PushWarning("Il personaggio del giocatore non è stato inizializzato.");
+            return false;
+        }
+
+        if (CombatManager.IsCombatActive)
+        {
+            HUD?.AddLogMessage("Sei già impegnato in un combattimento!");
+            return false;
+        }
+
+        var enemyList = enemies.Where(character => character is not null).ToList();
+        if (enemyList.Count == 0)
+        {
+            GD.PushWarning("Nessun nemico valido fornito per l'incontro.");
+            return false;
+        }
+
+        var party = new List<Character> { Player };
+
+        HUD?.ClearLog();
+
+        if (!string.IsNullOrWhiteSpace(encounterDescription))
+        {
+            HUD?.AddLogMessage(encounterDescription);
+        }
+
+        CombatManager.StartCombat(party, enemyList);
+        return true;
+    }
+
     private void AssignControllingFaction(Region region)
     {
         if (RegionFactionOverrides.TryGetValue(region.Name, out var faction))

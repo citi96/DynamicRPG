@@ -1,0 +1,48 @@
+[gd_scene load_steps=5 format=3 uid="uid://enemy_encounter"]
+
+[ext_resource type="Script" path="res://Scripts/World/Exploration/EnemyEncounter.cs" id="1"]
+[ext_resource type="Texture2D" path="res://icon.svg" id="2"]
+[ext_resource type="Script" path="res://Scripts/World/Exploration/EnemyDefinition.cs" id="3"]
+
+[sub_resource type="CircleShape2D" id="1"]
+radius = 96.0
+
+[sub_resource type="Resource" id="2"]
+resource_name = "Bandito di prova"
+script = ExtResource("3")
+Name = "Bandito di prova"
+Background = "Un bandito generico in cerca di bottino."
+Strength = 10
+Dexterity = 10
+Constitution = 10
+Intelligence = 9
+Wisdom = 9
+Charisma = 9
+WeaponName = "Pugnale Spuntato"
+WeaponDescription = "Un'arma improvvisata recuperata dalle strade."
+WeaponMinDamage = 1
+WeaponMaxDamage = 4
+WeaponAccuracyBonus = 1
+WeaponWeight = 1.5
+WeaponValue = 4
+ArmorName = "Tunica Logora"
+ArmorDescription = "Offre una protezione minima contro i colpi leggeri."
+ArmorDefenseBonus = 1
+ArmorWeight = 3.0
+ArmorValue = 5
+
+[node name="EnemyEncounter" type="Area2D"]
+script = ExtResource("1")
+collision_layer = 2
+collision_mask = 1
+DetectionRadius = 128.0
+EncounterDescription = "Un predone ti blocca il cammino."
+Enemies = [SubResource("2")]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("1")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = ExtResource("2")
+modulate = Color(0.878431, 0.219608, 0.254902, 0.780392)
+scale = Vector2(0.12, 0.12)
