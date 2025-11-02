@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 using DynamicRPG.Characters;
+using DynamicRPG.UI;
 
 namespace DynamicRPG.Systems.Combat;
 
@@ -20,6 +21,10 @@ public sealed partial class CombatManager : Node
     private readonly GridPathfinder _pathfinder = new();
 
     private CombatGrid? _combatGrid;
+
+    private Character? _activePlayerCharacter;
+
+    public static CombatManager? Instance { get; private set; }
 
     /// <summary>
     /// Gets the collection of allied combatants.
@@ -57,6 +62,45 @@ public sealed partial class CombatManager : Node
     public CombatGrid? CurrentGrid => _combatGrid;
 
     /// <summary>
+    /// Gets or sets the action menu associated with combat turns.
+    /// </summary>
+    public ActionMenu? ActionMenu { get; set; }
+
+    /// <summary>
+    /// Gets the combatant whose turn is currently active, when available.
+    /// </summary>
+    public Character? CurrentCharacter =>
+        TurnOrder.Count == 0 || CurrentTurnIndex < 0 || CurrentTurnIndex >= TurnOrder.Count
+            ? null
+            : TurnOrder[CurrentTurnIndex];
+
+    /// <summary>
+    /// Gets a value indicating whether the combat manager is waiting for a movement target.
+    /// </summary>
+    public bool AwaitingMoveTarget { get; private set; }
+
+    /// <summary>
+    /// Gets a value indicating whether the combat manager is waiting for an attack target.
+    /// </summary>
+    public bool AwaitingAttackTarget { get; private set; }
+
+    public override void _EnterTree()
+    {
+        base._EnterTree();
+        Instance = this;
+    }
+
+    public override void _ExitTree()
+    {
+        if (Instance == this)
+        {
+            Instance = null;
+        }
+
+        base._ExitTree();
+    }
+
+    /// <summary>
     /// Initializes and starts a combat encounter with the provided participants.
     /// </summary>
     /// <param name="players">Collection of allied combatants.</param>
@@ -77,6 +121,11 @@ public sealed partial class CombatManager : Node
         CurrentTurnIndex = 0;
         IsCombatActive = Players.Any(character => character.CurrentHealth > 0) &&
             Enemies.Any(character => character.CurrentHealth > 0);
+
+        AwaitingMoveTarget = false;
+        AwaitingAttackTarget = false;
+        _activePlayerCharacter = null;
+        ActionMenu?.HideMenu();
 
         if (!IsCombatActive)
         {
@@ -167,6 +216,11 @@ public sealed partial class CombatManager : Node
 
         currentCombatant.ResetMovementForNewTurn();
 
+        AwaitingMoveTarget = false;
+        AwaitingAttackTarget = false;
+        _activePlayerCharacter = null;
+        ActionMenu?.HideMenu();
+
         if (currentCombatant.CurrentHealth <= 0)
         {
             LogMessage($"{currentCombatant.Name} è stato sconfitto prima del suo turno, si passa oltre.");
@@ -192,6 +246,50 @@ public sealed partial class CombatManager : Node
         EndTurn();
     }
 
+    public void PrepareMove()
+    {
+        if (!IsCombatActive || _activePlayerCharacter is null)
+        {
+            ActionMenu?.ShowMenu();
+            return;
+        }
+
+        AwaitingMoveTarget = true;
+        AwaitingAttackTarget = false;
+
+        LogMessage($"Seleziona una destinazione di movimento per {_activePlayerCharacter.Name}.");
+    }
+
+    public void HandlePlayerAttackRequest()
+    {
+        if (!IsCombatActive || _activePlayerCharacter is null)
+        {
+            ActionMenu?.ShowMenu();
+            return;
+        }
+
+        AwaitingMoveTarget = false;
+        AwaitingAttackTarget = true;
+
+        var target = Enemies.FirstOrDefault(enemy => enemy.CurrentHealth > 0);
+        if (target is null)
+        {
+            LogMessage("Nessun nemico valido da attaccare.");
+            AwaitingAttackTarget = false;
+            ActionMenu?.ShowMenu();
+            return;
+        }
+
+        LogMessage($"{_activePlayerCharacter.Name} sferra un attacco automatico contro {target.Name}.");
+        ResolveBasicAttack(_activePlayerCharacter, target);
+        AwaitingAttackTarget = false;
+
+        if (IsCombatActive)
+        {
+            EndTurn();
+        }
+    }
+
     /// <summary>
     /// Ends the current turn and advances to the next combatant.
     /// </summary>
@@ -201,6 +299,11 @@ public sealed partial class CombatManager : Node
         {
             return;
         }
+
+        AwaitingMoveTarget = false;
+        AwaitingAttackTarget = false;
+        _activePlayerCharacter = null;
+        ActionMenu?.HideMenu();
 
         if (CheckBattleEnd())
         {
@@ -226,26 +329,39 @@ public sealed partial class CombatManager : Node
 
     private void ExecutePlayerTurn(Character player)
     {
-        LogMessage($"{player.Name} (giocatore) esegue un'azione automatica di test.");
+        _activePlayerCharacter = player;
+        AwaitingMoveTarget = false;
+        AwaitingAttackTarget = false;
 
-        var target = Enemies.FirstOrDefault(enemy => enemy.CurrentHealth > 0);
-        if (target is null)
+        if (ActionMenu is null)
         {
-            LogMessage("Nessun nemico valido da attaccare.");
-            EndTurn();
+            LogMessage($"{player.Name} (giocatore) esegue un'azione automatica di test (menu azioni non disponibile).");
+
+            var fallbackTarget = Enemies.FirstOrDefault(enemy => enemy.CurrentHealth > 0);
+            if (fallbackTarget is null)
+            {
+                LogMessage("Nessun nemico valido da attaccare.");
+                EndTurn();
+                return;
+            }
+
+            ResolveBasicAttack(player, fallbackTarget);
+
+            if (IsCombatActive)
+            {
+                EndTurn();
+            }
+
             return;
         }
 
-        ResolveBasicAttack(player, target);
-
-        if (IsCombatActive)
-        {
-            EndTurn();
-        }
+        ActionMenu.ShowMenu();
+        LogMessage($"{player.Name} attende un'azione del giocatore.");
     }
 
     private void ExecuteEnemyTurn(Character enemy)
     {
+        ActionMenu?.HideMenu();
         LogMessage($"{enemy.Name} (nemico) agisce con l'IA di base.");
 
         var target = Players.FirstOrDefault(player => player.CurrentHealth > 0);
@@ -344,6 +460,10 @@ public sealed partial class CombatManager : Node
         CurrentTurnIndex = 0;
         RoundNumber = 0;
         IsCombatActive = false;
+        AwaitingMoveTarget = false;
+        AwaitingAttackTarget = false;
+        _activePlayerCharacter = null;
+        ActionMenu?.HideMenu();
         _combatGrid?.ClearOccupants();
         _combatGrid = null;
     }

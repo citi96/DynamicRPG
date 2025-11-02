@@ -94,6 +94,12 @@ public partial class Game : Node2D
 
         HUD = _ui?.GetNodeOrNull<HUD>("HUD");
 
+        if (HUD is { } hud && CombatManager is { } combatManager)
+        {
+            combatManager.ActionMenu = hud.ActionMenu;
+            hud.ActionMenu?.HideMenu();
+        }
+
         // TODO: Initialize the digital game master singleton when available.
         _digitalGameMaster = null;
 

@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://hudscene"]
+[gd_scene load_steps=3 format=3 uid="uid://hudscene"]
 
 [ext_resource type="Script" uid="uid://hudscript" path="res://Scripts/UI/HUD.cs" id="1"]
+[ext_resource type="Script" uid="uid://actionmenu" path="res://Scripts/UI/ActionMenu.cs" id="2"]
 
 [node name="HUD" type="Control"]
 script = ExtResource("1")
@@ -10,6 +11,48 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+
+[node name="ActionPanel" type="Panel" parent="."]
+visible = false
+layout_mode = 1
+anchor_left = 0.0
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -260.0
+offset_right = 224.0
+offset_bottom = -56.0
+self_modulate = Color(1, 1, 1, 0.75)
+grow_horizontal = 0
+grow_vertical = 0
+script = ExtResource("2")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="ActionPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MoveButton" type="Button" parent="ActionPanel/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Muovi"
+
+[node name="AttackButton" type="Button" parent="ActionPanel/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Attacca"
+
+[node name="EndTurnButton" type="Button" parent="ActionPanel/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Termina Turno"
 
 [node name="LogPanel" type="Panel" parent="."]
 layout_mode = 1
