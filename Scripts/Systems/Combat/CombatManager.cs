@@ -21,6 +21,8 @@ public sealed partial class CombatManager : Node
     private readonly GridPathfinder _pathfinder = new();
 
     private CombatGrid? _combatGrid;
+    private TileMapLayer? _battleTileLayer;
+    private TileSet? _battleTileSet;
 
     private Character? _activePlayerCharacter;
 
@@ -84,10 +86,23 @@ public sealed partial class CombatManager : Node
     /// </summary>
     public bool AwaitingAttackTarget { get; private set; }
 
+    private const int EmptyTileSourceId = 0;
+    private const int ObstacleTileSourceId = 1;
+    private static readonly Vector2I BattleTileSize = new(64, 64);
+    private static readonly Color EmptyTileColor = new(0.247f, 0.514f, 0.298f);
+    private static readonly Color ObstacleTileColor = new(0.745f, 0.224f, 0.224f);
+
     public override void _EnterTree()
     {
         base._EnterTree();
         Instance = this;
+    }
+
+    public override void _Ready()
+    {
+        base._Ready();
+        EnsureBattleTileLayerReady();
+        HideBattleGrid();
     }
 
     public override void _ExitTree()
@@ -135,6 +150,7 @@ public sealed partial class CombatManager : Node
         }
 
         InitializeArenaLayout();
+        SyncTileLayerWithGrid();
         PlaceInitialCombatants();
 
         _rng.Randomize();
@@ -289,6 +305,7 @@ public sealed partial class CombatManager : Node
         AwaitingAttackTarget = false;
 
         LogMessage($"Seleziona una destinazione di movimento per {_activePlayerCharacter.Name}.");
+        // TODO: evidenzia celle raggiungibili (raggio = MovementAllowance)
     }
 
     public void HandlePlayerAttackRequest()
@@ -301,24 +318,7 @@ public sealed partial class CombatManager : Node
 
         AwaitingMoveTarget = false;
         AwaitingAttackTarget = true;
-
-        var target = Enemies.FirstOrDefault(enemy => enemy.CurrentHealth > 0);
-        if (target is null)
-        {
-            LogMessage("Nessun nemico valido da attaccare.");
-            AwaitingAttackTarget = false;
-            ActionMenu?.ShowMenu();
-            return;
-        }
-
-        LogMessage($"{_activePlayerCharacter.Name} sferra un attacco automatico contro {target.Name}.");
-        ResolveBasicAttack(_activePlayerCharacter, target);
-        AwaitingAttackTarget = false;
-
-        if (IsCombatActive)
-        {
-            EndTurn();
-        }
+        LogMessage($"Seleziona un bersaglio da attaccare con {_activePlayerCharacter.Name}.");
     }
 
     /// <summary>
@@ -467,6 +467,7 @@ public sealed partial class CombatManager : Node
         ActionMenu?.HideMenu();
         _combatGrid?.ClearOccupants();
         _combatGrid = null;
+        HideBattleGrid();
     }
 
     private void AdvanceToNextTurnIndex()
@@ -517,6 +518,7 @@ public sealed partial class CombatManager : Node
         _combatGrid = grid;
 
         LogMessage($"Griglia di combattimento inizializzata: {DefaultGridWidth}x{DefaultGridHeight}.");
+        ShowBattleGrid();
     }
 
     private void PlaceInitialCombatants()
@@ -708,6 +710,38 @@ public sealed partial class CombatManager : Node
         return currentPosition.X == targetX && currentPosition.Y == targetY;
     }
 
+    public override void _Input(InputEvent @event)
+    {
+        base._Input(@event);
+
+        if (!IsCombatActive || _battleTileLayer is null)
+        {
+            return;
+        }
+
+        if (@event is not InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
+        {
+            return;
+        }
+
+        if (!AwaitingMoveTarget && !AwaitingAttackTarget)
+        {
+            return;
+        }
+
+        var viewport = GetViewport();
+        if (viewport is null)
+        {
+            return;
+        }
+
+        var clickPosition = viewport.GetMousePosition();
+        var localPosition = _battleTileLayer.ToLocal(clickPosition);
+        var cell = _battleTileLayer.LocalToMap(localPosition);
+
+        HandleTileSelection(cell);
+    }
+
     private static void LogMessage(string message)
     {
         if (string.IsNullOrWhiteSpace(message))
@@ -723,5 +757,205 @@ public sealed partial class CombatManager : Node
         }
 
         GD.Print(message);
+    }
+
+    private void EnsureBattleTileLayerReady()
+    {
+        _battleTileLayer ??= GetNodeOrNull<TileMapLayer>("BattleGrid");
+
+        if (_battleTileLayer is null)
+        {
+            GD.PushWarning("TileMapLayer BattleGrid non trovata nella scena di combattimento.");
+            return;
+        }
+
+        if (_battleTileLayer.TileSet is null)
+        {
+            _battleTileSet = CreateBattleTileSet();
+            _battleTileLayer.TileSet = _battleTileSet;
+        }
+        else if (!ReferenceEquals(_battleTileSet, _battleTileLayer.TileSet))
+        {
+            _battleTileSet = _battleTileLayer.TileSet;
+        }
+
+        if (_battleTileSet is not null)
+        {
+            if (!_battleTileSet.HasSource(EmptyTileSourceId))
+            {
+                _battleTileSet.AddSource(CreateSolidTileSource(EmptyTileColor), EmptyTileSourceId);
+            }
+
+            if (!_battleTileSet.HasSource(ObstacleTileSourceId))
+            {
+                _battleTileSet.AddSource(CreateSolidTileSource(ObstacleTileColor), ObstacleTileSourceId);
+            }
+
+            _battleTileSet.TileSize = BattleTileSize;
+        }
+    }
+
+    private TileSet CreateBattleTileSet()
+    {
+        var tileSet = new TileSet
+        {
+            TileSize = BattleTileSize,
+        };
+
+        tileSet.AddSource(CreateSolidTileSource(EmptyTileColor), EmptyTileSourceId);
+        tileSet.AddSource(CreateSolidTileSource(ObstacleTileColor), ObstacleTileSourceId);
+
+        return tileSet;
+    }
+
+    private static TileSetAtlasSource CreateSolidTileSource(Color color)
+    {
+        var image = Image.CreateEmpty(BattleTileSize.X, BattleTileSize.Y, false, Image.Format.Rgba8);
+        image.Fill(color);
+
+        var texture = ImageTexture.CreateFromImage(image);
+
+        return new TileSetAtlasSource
+        {
+            Texture = texture,
+            TextureRegionSize = BattleTileSize,
+        };
+    }
+
+    private void SyncTileLayerWithGrid()
+    {
+        if (_combatGrid is null)
+        {
+            return;
+        }
+
+        EnsureBattleTileLayerReady();
+
+        if (_battleTileLayer is null)
+        {
+            return;
+        }
+
+        _battleTileLayer.Clear();
+        _battleTileLayer.Visible = true;
+
+        for (var x = 0; x < _combatGrid.Width; x++)
+        {
+            for (var y = 0; y < _combatGrid.Height; y++)
+            {
+                var tileType = _combatGrid.GetTile(new GridPosition(x, y));
+                var sourceId = tileType == TileType.Obstacle ? ObstacleTileSourceId : EmptyTileSourceId;
+                _battleTileLayer.SetCell(new Vector2I(x, y), sourceId, Vector2I.Zero, 0);
+            }
+        }
+    }
+
+    private void HandleTileSelection(Vector2I cell)
+    {
+        if (_combatGrid is null)
+        {
+            return;
+        }
+
+        var gridPosition = new GridPosition(cell.X, cell.Y);
+
+        if (!_combatGrid.IsWithinBounds(gridPosition))
+        {
+            LogMessage("La cella selezionata è fuori dalla griglia di combattimento.");
+            return;
+        }
+
+        if (AwaitingMoveTarget && CurrentCharacter is { } movingCharacter && Players.Contains(movingCharacter))
+        {
+            HandleMoveSelection(movingCharacter, gridPosition);
+            return;
+        }
+
+        if (AwaitingAttackTarget && CurrentCharacter is { } attackingCharacter && Players.Contains(attackingCharacter))
+        {
+            HandleAttackSelection(attackingCharacter, gridPosition);
+        }
+    }
+
+    private void HandleMoveSelection(Character character, GridPosition destination)
+    {
+        if (!CanMoveTo(character, destination.X, destination.Y))
+        {
+            LogMessage($"{character.Name} non può raggiungere la cella {destination}.");
+            return;
+        }
+
+        var reachedTarget = MoveCharacter(character, destination.X, destination.Y);
+
+        if (reachedTarget)
+        {
+            AwaitingMoveTarget = false;
+            LogMessage($"{character.Name} termina il movimento.");
+            EndTurn();
+            return;
+        }
+
+        if (character.RemainingMovement <= 0)
+        {
+            AwaitingMoveTarget = false;
+            LogMessage($"{character.Name} non ha altro movimento disponibile.");
+            EndTurn();
+        }
+    }
+
+    private void HandleAttackSelection(Character attacker, GridPosition destination)
+    {
+        var target = FindCharacterAt(destination);
+
+        if (target is null)
+        {
+            LogMessage("Nessun bersaglio presente su quella cella.");
+            return;
+        }
+
+        if (!Enemies.Contains(target))
+        {
+            LogMessage($"{attacker.Name} non può attaccare {target.Name}: non è un nemico valido.");
+            return;
+        }
+
+        AwaitingAttackTarget = false;
+        ResolveBasicAttack(attacker, target);
+
+        if (IsCombatActive)
+        {
+            EndTurn();
+        }
+    }
+
+    private Character? FindCharacterAt(GridPosition position)
+    {
+        if (_combatGrid is null)
+        {
+            return null;
+        }
+
+        return _combatGrid.GetOccupant(position);
+    }
+
+    private void ShowBattleGrid()
+    {
+        EnsureBattleTileLayerReady();
+
+        if (_battleTileLayer is not null)
+        {
+            _battleTileLayer.Visible = true;
+        }
+    }
+
+    private void HideBattleGrid()
+    {
+        if (_battleTileLayer is null)
+        {
+            return;
+        }
+
+        _battleTileLayer.Visible = false;
+        _battleTileLayer.Clear();
     }
 }
