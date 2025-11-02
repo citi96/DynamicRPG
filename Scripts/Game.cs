@@ -113,6 +113,7 @@ public partial class Game : Node2D
         InitializeStartingLocation();
         InitializePlayerCharacter();
         InitializeWeatherForRegions();
+        ApplyExplorationTheme(CurrentRegion);
 
         _explorationController?.RefreshFromGame();
 
@@ -461,6 +462,17 @@ public partial class Game : Node2D
 
         CombatManager.StartCombat(party, enemyList);
         return true;
+    }
+
+    private void ApplyExplorationTheme(Region region)
+    {
+        if (_explorationController is null)
+        {
+            return;
+        }
+
+        var theme = ExplorationThemeResolver.Resolve(region.EnvironmentType);
+        _explorationController.ApplyTheme(theme);
     }
 
     private void AssignControllingFaction(Region region)
