@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using DynamicRPG.Items;
 using DynamicRPG.World;
 using DynamicRPG.World.Locations;
+using Godot;
 
 #nullable enable
 
@@ -11,8 +12,9 @@ namespace DynamicRPG.Characters;
 
 /// <summary>
 /// Represents a creature or person within the world, including both players and NPCs.
+/// As a <see cref="Node2D"/>, the character encapsulates both gameplay data and its on-screen representation.
 /// </summary>
-public class Character
+public partial class Character : Node2D
 {
     private const int BaseHealth = 10;
     private const int HealthPerConstitutionPoint = 2;
@@ -24,11 +26,36 @@ public class Character
     private const int DefaultBaseMovementAllowance = 5;
 
     private double _additionalCarryCapacity;
+    private string _displayName = string.Empty;
+
+    [ExportGroup("Visuals")]
+    [Export]
+    public Texture2D? CharacterTexture { get; set; }
+
+    [Export]
+    public Vector2 SpriteScale { get; set; } = new(0.25f, 0.25f);
+
+    [Export(PropertyHint.ColorNoAlpha)]
+    public Color PlayerColor { get; set; } = new(0.2f, 0.7f, 0.9f);
+
+    [Export(PropertyHint.ColorNoAlpha)]
+    public Color EnemyColor { get; set; } = new(0.9f, 0.2f, 0.25f);
+
+    [Export]
+    public NodePath SpriteNodePath { get; set; } = new("CharacterSprite");
 
     /// <summary>
     /// Gets or sets the in-world display name.
     /// </summary>
-    public string Name { get; set; } = string.Empty;
+    public new string Name
+    {
+        get => _displayName;
+        set
+        {
+            _displayName = value;
+            base.Name = value;
+        }
+    }
 
     /// <summary>
     /// Gets or sets the narrative background assigned to the character.
@@ -222,6 +249,50 @@ public class Character
         SynchronizeCarryCapacity();
         HandleInventoryWeightChanged(Inventory.GetTotalWeight());
         RemainingMovement = CurrentMovementAllowance;
+    }
+
+    /// <summary>
+    /// Sets up the visual representation of the character when it enters the scene tree.
+    /// </summary>
+    public override void _Ready()
+    {
+        base._Ready();
+
+        var sprite = SpriteNodePath.IsEmpty
+            ? null
+            : GetNodeOrNull<Sprite2D>(SpriteNodePath);
+
+        if (sprite is null)
+        {
+            sprite = new Sprite2D
+            {
+                Name = SpriteNodePath.IsEmpty ? "CharacterSprite" : SpriteNodePath.GetName(0),
+            };
+
+            AddChild(sprite);
+            SpriteNodePath = sprite.GetPath();
+        }
+
+        sprite.Texture = ResolveTexture();
+        sprite.Scale = SpriteScale;
+        sprite.Modulate = IsPlayer ? PlayerColor : EnemyColor;
+    }
+
+    private Texture2D ResolveTexture()
+    {
+        if (CharacterTexture is not null)
+        {
+            return CharacterTexture;
+        }
+
+        const string preferredIconPath = "res://icon.png";
+
+        if (ResourceLoader.Exists(preferredIconPath))
+        {
+            return GD.Load<Texture2D>(preferredIconPath);
+        }
+
+        return GD.Load<Texture2D>("res://icon.svg");
     }
 
     /// <summary>
