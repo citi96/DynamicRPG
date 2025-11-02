@@ -136,7 +136,6 @@ public sealed partial class CombatManager : Node
 
         InitializeArenaLayout();
         PlaceInitialCombatants();
-        ResetMovementAllowancesForParticipants();
 
         _rng.Randomize();
         RollInitiative();
@@ -148,7 +147,7 @@ public sealed partial class CombatManager : Node
             return;
         }
 
-        CurrentTurnIndex = 0;
+        HandleNewRoundStart();
         BeginTurn();
     }
 
@@ -160,6 +159,7 @@ public sealed partial class CombatManager : Node
         TurnOrder.Clear();
 
         var initiativeEntries = new List<InitiativeEntry>();
+
         foreach (var combatant in Players.Concat(Enemies))
         {
             if (combatant is null)
@@ -167,13 +167,24 @@ public sealed partial class CombatManager : Node
                 continue;
             }
 
-            var roll = (int)_rng.RandiRange(1, 20);
-            var dexterityModifier = CalculateAbilityModifier(combatant.Dexterity);
-            var total = roll + dexterityModifier + combatant.InitiativeBonus;
+            var baseRoll = (int)_rng.RandiRange(1, 20);
+            var dexterityBonus = combatant.Dexterity / 2;
+            var traitBonus = combatant.Traits.Any(trait =>
+                string.Equals(trait.Name, "Allerta", StringComparison.OrdinalIgnoreCase))
+                ? 5
+                : 0;
+
+            var total = baseRoll + dexterityBonus + traitBonus + combatant.InitiativeBonus;
             var tieBreaker = _rng.Randf();
 
-            initiativeEntries.Add(new InitiativeEntry(combatant, total, combatant.Dexterity, tieBreaker));
-            LogMessage($"Iniziativa di {combatant.Name}: tiro {roll} + DEX {dexterityModifier} + bonus {combatant.InitiativeBonus} = {total}");
+            initiativeEntries.Add(new InitiativeEntry(
+                combatant,
+                total,
+                combatant.Dexterity,
+                tieBreaker));
+
+            LogMessage(
+                $"Iniziativa di {combatant.Name}: tiro {baseRoll} + DEX {dexterityBonus} + tratto {traitBonus} + bonus {combatant.InitiativeBonus} = {total}");
         }
 
         var ordered = initiativeEntries
@@ -184,8 +195,13 @@ public sealed partial class CombatManager : Node
             .ToList();
 
         TurnOrder.AddRange(ordered);
+        CurrentTurnIndex = 0;
+        RoundNumber = 1;
 
-        LogMessage("Ordine di turno: " + string.Join(", ", TurnOrder.Select(character => character.Name)));
+        if (TurnOrder.Count > 0)
+        {
+            LogMessage("Ordine di turno: " + string.Join(", ", TurnOrder.Select(character => character.Name)));
+        }
     }
 
     /// <summary>
@@ -195,6 +211,12 @@ public sealed partial class CombatManager : Node
     {
         if (!IsCombatActive)
         {
+            return;
+        }
+
+        if (TurnOrder.Count == 0)
+        {
+            EndCombat();
             return;
         }
 
@@ -212,27 +234,35 @@ public sealed partial class CombatManager : Node
         }
 
         CurrentTurnIndex = Math.Clamp(CurrentTurnIndex, 0, TurnOrder.Count - 1);
+
         var currentCombatant = TurnOrder[CurrentTurnIndex];
+
+        if (currentCombatant.CurrentHealth <= 0)
+        {
+            LogMessage($"{currentCombatant.Name} è stato sconfitto prima del suo turno, si passa oltre.");
+            AdvanceToNextTurnIndex();
+            BeginTurn();
+            return;
+        }
 
         currentCombatant.ResetMovementForNewTurn();
 
         AwaitingMoveTarget = false;
         AwaitingAttackTarget = false;
         _activePlayerCharacter = null;
-        ActionMenu?.HideMenu();
-
-        if (currentCombatant.CurrentHealth <= 0)
-        {
-            LogMessage($"{currentCombatant.Name} è stato sconfitto prima del suo turno, si passa oltre.");
-            EndTurn();
-            return;
-        }
 
         LogMessage($"--- Round {RoundNumber}, turno di {currentCombatant.Name} ---");
 
         if (Enemies.Contains(currentCombatant))
         {
-            ExecuteEnemyTurn(currentCombatant);
+            ActionMenu?.HideMenu();
+            ExecuteEnemyAI(currentCombatant);
+
+            if (IsCombatActive)
+            {
+                EndTurn();
+            }
+
             return;
         }
 
@@ -243,7 +273,8 @@ public sealed partial class CombatManager : Node
         }
 
         LogMessage($"{currentCombatant.Name} non appartiene più a nessuna fazione, turno saltato.");
-        EndTurn();
+        AdvanceToNextTurnIndex();
+        BeginTurn();
     }
 
     public void PrepareMove()
@@ -316,14 +347,7 @@ public sealed partial class CombatManager : Node
             return;
         }
 
-        CurrentTurnIndex++;
-
-        if (CurrentTurnIndex >= TurnOrder.Count)
-        {
-            CurrentTurnIndex = 0;
-            RoundNumber++;
-        }
-
+        AdvanceToNextTurnIndex();
         BeginTurn();
     }
 
@@ -335,23 +359,7 @@ public sealed partial class CombatManager : Node
 
         if (ActionMenu is null)
         {
-            LogMessage($"{player.Name} (giocatore) esegue un'azione automatica di test (menu azioni non disponibile).");
-
-            var fallbackTarget = Enemies.FirstOrDefault(enemy => enemy.CurrentHealth > 0);
-            if (fallbackTarget is null)
-            {
-                LogMessage("Nessun nemico valido da attaccare.");
-                EndTurn();
-                return;
-            }
-
-            ResolveBasicAttack(player, fallbackTarget);
-
-            if (IsCombatActive)
-            {
-                EndTurn();
-            }
-
+            LogMessage($"{player.Name} attende un'azione del giocatore, ma il menu azioni non è disponibile.");
             return;
         }
 
@@ -359,25 +367,18 @@ public sealed partial class CombatManager : Node
         LogMessage($"{player.Name} attende un'azione del giocatore.");
     }
 
-    private void ExecuteEnemyTurn(Character enemy)
+    private void ExecuteEnemyAI(Character enemy)
     {
-        ActionMenu?.HideMenu();
-        LogMessage($"{enemy.Name} (nemico) agisce con l'IA di base.");
+        LogMessage($"{enemy.Name} (nemico) valuta le opzioni e agisce.");
 
         var target = Players.FirstOrDefault(player => player.CurrentHealth > 0);
         if (target is null)
         {
             LogMessage("Nessun giocatore valido da attaccare.");
-            EndTurn();
             return;
         }
 
         ResolveBasicAttack(enemy, target);
-
-        if (IsCombatActive)
-        {
-            EndTurn();
-        }
     }
 
     private void ResolveBasicAttack(Character attacker, Character defender)
@@ -435,17 +436,17 @@ public sealed partial class CombatManager : Node
             return false;
         }
 
-        if (!anyPlayerAlive && !anyEnemyAlive)
+        if (!anyEnemyAlive && !anyPlayerAlive)
         {
-            LogMessage("Il combattimento termina senza vincitori.");
+            LogMessage("Combattimento terminato senza vincitori.");
         }
         else if (!anyEnemyAlive)
         {
-            LogMessage("I giocatori vincono il combattimento!");
+            LogMessage("Combattimento terminato: Vittoria del giocatore!");
         }
         else
         {
-            LogMessage("I giocatori sono stati sconfitti.");
+            LogMessage("I giocatori sono stati sconfitti...");
         }
 
         EndCombat();
@@ -468,8 +469,29 @@ public sealed partial class CombatManager : Node
         _combatGrid = null;
     }
 
-    private static int CalculateAbilityModifier(int abilityScore) => 
-        (int)Math.Floor((abilityScore - 10) / 2.0);
+    private void AdvanceToNextTurnIndex()
+    {
+        if (TurnOrder.Count == 0)
+        {
+            CurrentTurnIndex = 0;
+            return;
+        }
+
+        CurrentTurnIndex++;
+
+        if (CurrentTurnIndex >= TurnOrder.Count)
+        {
+            CurrentTurnIndex = 0;
+            RoundNumber++;
+            HandleNewRoundStart();
+        }
+    }
+
+    private void HandleNewRoundStart()
+    {
+        ResetMovementAllowancesForParticipants();
+        LogMessage($"Round {RoundNumber} inizia!");
+    }
 
     private readonly record struct InitiativeEntry(Character Combatant, int Total, int DexterityScore, float TieBreaker);
 
