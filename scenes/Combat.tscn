@@ -5,6 +5,8 @@
 [node name="Combat" type="Node"]
 script = ExtResource("1")
 
+[node name="BattleGrid" type="TileMapLayer" parent="."]
+
 [node name="Arena" type="Node2D" parent="."]
 
 [node name="Info" type="Label" parent="Arena"]

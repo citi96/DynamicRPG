@@ -51,7 +51,7 @@ public partial class ExplorationController : Node2D
     public Rect2 PlayableArea { get; set; } = new Rect2(new Vector2(-640, -360), new Vector2(1280, 720));
 
     [Export]
-    public TileMap? TerrainTileMap { get; set; }
+    public TileMapLayer? TerrainTileMap { get; set; }
 
     [Export]
     public Node2D? FoliageContainer { get; set; }
@@ -102,7 +102,7 @@ public partial class ExplorationController : Node2D
         LocationInfoLabel ??= GetNodeOrNull<Label>("InfoLayer/Info");
         HelpLabel ??= GetNodeOrNull<Label>("InfoLayer/Help");
         PlayerSpawn ??= GetNodeOrNull<Marker2D>("World/PlayerSpawn");
-        TerrainTileMap ??= _worldRoot?.GetNodeOrNull<TileMap>("Terrain");
+        TerrainTileMap ??= _worldRoot?.GetNodeOrNull<TileMapLayer>("Terrain");
         FoliageContainer ??= _worldRoot?.GetNodeOrNull<Node2D>("Foliage");
         _enemyContainer = EnemyContainer ?? _worldRoot?.GetNodeOrNull<Node2D>("Encounters");
 
@@ -159,7 +159,7 @@ public partial class ExplorationController : Node2D
 
         var tileSize = Math.Max(TileSize, DefaultTileSize);
 
-        TerrainTileMap ??= _worldRoot.GetNodeOrNull<TileMap>("Terrain") ?? new TileMap { Name = "Terrain" };
+        TerrainTileMap ??= _worldRoot.GetNodeOrNull<TileMapLayer>("Terrain") ?? new TileMapLayer { Name = "Terrain" };
         if (!TerrainTileMap.IsInsideTree())
         {
             _worldRoot.AddChild(TerrainTileMap);
@@ -190,7 +190,7 @@ public partial class ExplorationController : Node2D
                 }
 
                 var sourceId = _tileSources[tileType];
-                TerrainTileMap.SetCell(0, cell, sourceId, Vector2I.Zero);
+                TerrainTileMap.SetCell(cell, sourceId, Vector2I.Zero, 0);
             }
         }
 
