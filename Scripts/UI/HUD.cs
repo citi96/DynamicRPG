@@ -12,9 +12,12 @@ public sealed partial class HUD : Control
 {
     private RichTextLabel? _combatLog;
 
+    public ActionMenu? ActionMenu { get; private set; }
+
     public override void _Ready()
     {
         _combatLog = GetNodeOrNull<RichTextLabel>("LogPanel/CombatLog");
+        ActionMenu = GetNodeOrNull<ActionMenu>("ActionPanel");
     }
 
     /// <summary>
