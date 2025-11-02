@@ -6,14 +6,7 @@
 
 [node name="Exploration" type="Node2D"]
 script = ExtResource("2")
-LocationInfoLabel = NodePath("InfoLayer/Info")
-HelpLabel = NodePath("InfoLayer/Help")
-PlayerSpawn = NodePath("World/PlayerSpawn")
-Player = NodePath("World/Player")
 PlayableArea = Rect2(-1536, -1152, 3072, 2304)
-TerrainTileMap = NodePath("World/Terrain")
-FoliageContainer = NodePath("World/Foliage")
-EnemyContainer = NodePath("World/Encounters")
 EnemyEncounterScene = ExtResource("3")
 EncounterCount = 6
 TreeCount = 220
@@ -31,7 +24,6 @@ StoneColor = Color(0.396078, 0.396078, 0.396078, 1)
 y_sort_enabled = true
 
 [node name="Terrain" type="TileMapLayer" parent="World"]
-format = 2
 
 [node name="Foliage" type="Node2D" parent="World"]
 
@@ -41,7 +33,6 @@ y_sort_enabled = true
 [node name="PlayerSpawn" type="Marker2D" parent="World"]
 
 [node name="Player" parent="World" instance=ExtResource("1")]
-CameraPath = null
 
 [node name="InfoLayer" type="CanvasLayer" parent="."]
 

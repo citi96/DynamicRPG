@@ -11,19 +11,26 @@ namespace DynamicRPG.Systems.Combat;
 
 /// <summary>
 /// Coordinates the flow of a turn-based combat encounter.
+/// Implements Prompts 4.7-4.13 complete specifications.
 /// </summary>
 public sealed partial class CombatManager : Node
 {
     private const int DefaultGridWidth = 10;
     private const int DefaultGridHeight = 10;
+    private const int EmptyTileSourceId = 0;
+    private const int ObstacleTileSourceId = 1;
+
+    private static readonly Vector2I BattleTileSize = new(64, 64);
+    private static readonly Color EmptyTileColor = new(0.247f, 0.514f, 0.298f);
+    private static readonly Color ObstacleTileColor = new(0.745f, 0.224f, 0.224f);
 
     private readonly RandomNumberGenerator _rng = new();
     private readonly GridPathfinder _pathfinder = new();
+    private readonly Dictionary<Character, bool> _reactionsUsed = new();
 
     private CombatGrid? _combatGrid;
     private TileMapLayer? _battleTileLayer;
     private TileSet? _battleTileSet;
-
     private Character? _activePlayerCharacter;
 
     public static CombatManager? Instance { get; private set; }
@@ -86,12 +93,6 @@ public sealed partial class CombatManager : Node
     /// </summary>
     public bool AwaitingAttackTarget { get; private set; }
 
-    private const int EmptyTileSourceId = 0;
-    private const int ObstacleTileSourceId = 1;
-    private static readonly Vector2I BattleTileSize = new(64, 64);
-    private static readonly Color EmptyTileColor = new(0.247f, 0.514f, 0.298f);
-    private static readonly Color ObstacleTileColor = new(0.745f, 0.224f, 0.224f);
-
     public override void _EnterTree()
     {
         base._EnterTree();
@@ -111,7 +112,6 @@ public sealed partial class CombatManager : Node
         {
             Instance = null;
         }
-
         base._ExitTree();
     }
 
@@ -132,10 +132,11 @@ public sealed partial class CombatManager : Node
         Enemies.AddRange(enemies.Where(character => character is not null));
 
         TurnOrder.Clear();
+        _reactionsUsed.Clear();
         RoundNumber = 1;
         CurrentTurnIndex = 0;
-        IsCombatActive = Players.Any(character => character.CurrentHealth > 0) &&
-            Enemies.Any(character => character.CurrentHealth > 0);
+        IsCombatActive = Players.Any(c => c.CurrentHealth > 0) &&
+                         Enemies.Any(c => c.CurrentHealth > 0);
 
         AwaitingMoveTarget = false;
         AwaitingAttackTarget = false;
@@ -173,41 +174,29 @@ public sealed partial class CombatManager : Node
     public void RollInitiative()
     {
         TurnOrder.Clear();
-
         var initiativeEntries = new List<InitiativeEntry>();
 
         foreach (var combatant in Players.Concat(Enemies))
         {
-            if (combatant is null)
-            {
-                continue;
-            }
+            if (combatant is null) continue;
 
             var baseRoll = (int)_rng.RandiRange(1, 20);
-            var dexterityBonus = combatant.Dexterity / 2;
-            var traitBonus = combatant.Traits.Any(trait =>
-                string.Equals(trait.Name, "Allerta", StringComparison.OrdinalIgnoreCase))
-                ? 5
-                : 0;
+            var dexBonus = combatant.Dexterity / 2;
+            var traitBonus = combatant.Traits.Any(t =>
+                string.Equals(t.Name, "Allerta", StringComparison.OrdinalIgnoreCase)) ? 5 : 0;
 
-            var total = baseRoll + dexterityBonus + traitBonus + combatant.InitiativeBonus;
+            var total = baseRoll + dexBonus + traitBonus + combatant.InitiativeBonus;
             var tieBreaker = _rng.Randf();
 
-            initiativeEntries.Add(new InitiativeEntry(
-                combatant,
-                total,
-                combatant.Dexterity,
-                tieBreaker));
-
-            LogMessage(
-                $"Iniziativa di {combatant.Name}: tiro {baseRoll} + DEX {dexterityBonus} + tratto {traitBonus} + bonus {combatant.InitiativeBonus} = {total}");
+            initiativeEntries.Add(new InitiativeEntry(combatant, total, combatant.Dexterity, tieBreaker));
+            LogMessage($"Iniziativa di {combatant.Name}: {baseRoll}+{dexBonus}+{traitBonus}+{combatant.InitiativeBonus} = {total}");
         }
 
         var ordered = initiativeEntries
-            .OrderByDescending(entry => entry.Total)
-            .ThenByDescending(entry => entry.DexterityScore)
-            .ThenByDescending(entry => entry.TieBreaker)
-            .Select(entry => entry.Combatant)
+            .OrderByDescending(e => e.Total)
+            .ThenByDescending(e => e.DexterityScore)
+            .ThenByDescending(e => e.TieBreaker)
+            .Select(e => e.Combatant)
             .ToList();
 
         TurnOrder.AddRange(ordered);
@@ -216,7 +205,7 @@ public sealed partial class CombatManager : Node
 
         if (TurnOrder.Count > 0)
         {
-            LogMessage("Ordine di turno: " + string.Join(", ", TurnOrder.Select(character => character.Name)));
+            LogMessage("Ordine di turno: " + string.Join(", ", TurnOrder.Select(c => c.Name)));
         }
     }
 
@@ -225,12 +214,7 @@ public sealed partial class CombatManager : Node
     /// </summary>
     public void BeginTurn()
     {
-        if (!IsCombatActive)
-        {
-            return;
-        }
-
-        if (TurnOrder.Count == 0)
+        if (!IsCombatActive || TurnOrder.Count == 0)
         {
             EndCombat();
             return;
@@ -250,18 +234,29 @@ public sealed partial class CombatManager : Node
         }
 
         CurrentTurnIndex = Math.Clamp(CurrentTurnIndex, 0, TurnOrder.Count - 1);
-
         var currentCombatant = TurnOrder[CurrentTurnIndex];
 
         if (currentCombatant.CurrentHealth <= 0)
         {
-            LogMessage($"{currentCombatant.Name} è stato sconfitto prima del suo turno, si passa oltre.");
+            LogMessage($"{currentCombatant.Name} è stato sconfitto prima del suo turno.");
             AdvanceToNextTurnIndex();
             BeginTurn();
             return;
         }
 
+        // Resetta movimento e processa status inizio turno
         currentCombatant.ResetMovementForNewTurn();
+
+        // Processa status effects inizio turno (Prompt 4.9)
+        var canAct = currentCombatant.ProcessBeginTurnStatusEffects();
+
+        if (!canAct)
+        {
+            // Il personaggio è stordito/congelato e non può agire
+            AdvanceToNextTurnIndex();
+            BeginTurn();
+            return;
+        }
 
         AwaitingMoveTarget = false;
         AwaitingAttackTarget = false;
@@ -269,16 +264,14 @@ public sealed partial class CombatManager : Node
 
         LogMessage($"--- Round {RoundNumber}, turno di {currentCombatant.Name} ---");
 
+        // Aggiorna UI turno (Prompt 4.12)
+        UpdateTurnDisplay();
+
         if (Enemies.Contains(currentCombatant))
         {
             ActionMenu?.HideMenu();
             ExecuteEnemyAI(currentCombatant);
-
-            if (IsCombatActive)
-            {
-                EndTurn();
-            }
-
+            if (IsCombatActive) EndTurn();
             return;
         }
 
@@ -288,47 +281,25 @@ public sealed partial class CombatManager : Node
             return;
         }
 
-        LogMessage($"{currentCombatant.Name} non appartiene più a nessuna fazione, turno saltato.");
+        LogMessage($"{currentCombatant.Name} non appartiene più a nessuna fazione.");
         AdvanceToNextTurnIndex();
         BeginTurn();
     }
 
-    public void PrepareMove()
-    {
-        if (!IsCombatActive || _activePlayerCharacter is null)
-        {
-            ActionMenu?.ShowMenu();
-            return;
-        }
-
-        AwaitingMoveTarget = true;
-        AwaitingAttackTarget = false;
-
-        LogMessage($"Seleziona una destinazione di movimento per {_activePlayerCharacter.Name}.");
-        // TODO: evidenzia celle raggiungibili (raggio = MovementAllowance)
-    }
-
-    public void HandlePlayerAttackRequest()
-    {
-        if (!IsCombatActive || _activePlayerCharacter is null)
-        {
-            ActionMenu?.ShowMenu();
-            return;
-        }
-
-        AwaitingMoveTarget = false;
-        AwaitingAttackTarget = true;
-        LogMessage($"Seleziona un bersaglio da attaccare con {_activePlayerCharacter.Name}.");
-    }
-
-    /// <summary>
-    /// Ends the current turn and advances to the next combatant.
-    /// </summary>
     public void EndTurn()
     {
-        if (!IsCombatActive)
+        if (!IsCombatActive || CurrentCharacter is null)
         {
             return;
+        }
+
+        // Processa status effects fine turno (Prompt 4.9)
+        CurrentCharacter.ProcessEndTurnStatusEffects();
+
+        // Aggiorna UI player se necessario (Prompt 4.8)
+        if (CurrentCharacter.IsPlayer)
+        {
+            UpdatePlayerStatsDisplay();
         }
 
         AwaitingMoveTarget = false;
@@ -351,98 +322,484 @@ public sealed partial class CombatManager : Node
         BeginTurn();
     }
 
-    private void ExecutePlayerTurn(Character player)
+    public void PrepareMove()
     {
-        _activePlayerCharacter = player;
-        AwaitingMoveTarget = false;
+        if (!IsCombatActive || _activePlayerCharacter is null)
+        {
+            ActionMenu?.ShowMenu();
+            return;
+        }
+
+        AwaitingMoveTarget = true;
         AwaitingAttackTarget = false;
+        LogMessage($"Seleziona una destinazione di movimento per {_activePlayerCharacter.Name}.");
+    }
 
-        if (ActionMenu is null)
+    public void HandlePlayerAttackRequest()
+    {
+        if (!IsCombatActive || _activePlayerCharacter is null)
         {
-            LogMessage($"{player.Name} attende un'azione del giocatore, ma il menu azioni non è disponibile.");
+            ActionMenu?.ShowMenu();
             return;
         }
 
-        ActionMenu.ShowMenu();
-        LogMessage($"{player.Name} attende un'azione del giocatore.");
+        AwaitingMoveTarget = false;
+        AwaitingAttackTarget = true;
+        LogMessage($"Seleziona un bersaglio da attaccare con {_activePlayerCharacter.Name}.");
     }
 
-    private void ExecuteEnemyAI(Character enemy)
+    /// <summary>
+    /// Performs complete attack resolution (Prompt 4.7).
+    /// </summary>
+    public bool PerformAttack(Character attacker, Character defender)
     {
-        LogMessage($"{enemy.Name} (nemico) valuta le opzioni e agisce.");
+        ArgumentNullException.ThrowIfNull(attacker);
+        ArgumentNullException.ThrowIfNull(defender);
 
-        var target = Players.FirstOrDefault(player => player.CurrentHealth > 0);
-        if (target is null)
+        if (!IsCombatActive || _combatGrid is null)
         {
-            LogMessage("Nessun giocatore valido da attaccare.");
-            return;
+            return false;
         }
 
-        ResolveBasicAttack(enemy, target);
-    }
+        // 1. Verifica portata e copertura (Prompt 4.11)
+        if (!IsWithinAttackRange(attacker, defender))
+        {
+            if (Players.Contains(attacker))
+            {
+                LogMessage($"{attacker.Name}: bersaglio fuori portata!");
+            }
+            return false;
+        }
 
-    private void ResolveBasicAttack(Character attacker, Character defender)
-    {
-        var damage = Math.Max(attacker.AttackRating, 1);
-        var defenderWasDefeated = defender.TakeDamage(damage);
+        // 2. Calcola modificatori copertura (Prompt 4.11)
+        var coverBonus = CalculateCoverBonus(attacker, defender);
 
-        LogMessage($"{attacker.Name} attacca {defender.Name} infliggendo {damage} danni. " +
-                 $"HP rimanenti: {defender.CurrentHealth}/{defender.MaxHealth}");
+        // 3. Tiro per colpire
+        var attackRoll = _rng.RandiRange(1, 20);
+        var attackBonus = CalculateAttackBonus(attacker);
+        var totalAttack = attackRoll + attackBonus;
+        var defenderAC = CalculateArmorClass(defender) + coverBonus;
 
-        if (defenderWasDefeated)
+        // 4. Verifica critici
+        var isCritical = attackRoll == 20;
+        var isCriticalFailure = attackRoll == 1;
+
+        if (isCriticalFailure)
+        {
+            LogMessage($"{attacker.Name} attacca {defender.Name} ma fallisce clamorosamente!");
+            return true;
+        }
+
+        if (!isCritical && totalAttack < defenderAC)
+        {
+            var coverMsg = coverBonus > 0 ? $" (in copertura +{coverBonus})" : "";
+            LogMessage($"{attacker.Name} manca {defender.Name}. ({attackRoll}+{attackBonus}={totalAttack} vs AC {defenderAC}{coverMsg})");
+            return true;
+        }
+
+        // 5. Calcola e applica danno
+        var damage = CalculateDamage(attacker, defender, isCritical);
+        var wasKilled = defender.TakeDamage(damage);
+
+        var critText = isCritical ? " (Critico!)" : "";
+        LogMessage($"{attacker.Name} colpisce {defender.Name} per {damage} danni{critText}. HP: {defender.CurrentHealth}/{defender.MaxHealth}");
+
+        if (defender.IsPlayer)
+        {
+            UpdatePlayerStatsDisplay();
+        }
+
+        if (wasKilled)
         {
             LogMessage($"{defender.Name} è stato sconfitto!");
         }
 
         RemoveDefeatedCombatants();
         CheckBattleEnd();
+        return true;
+    }
+
+    public bool MoveCharacter(Character character, int targetX, int targetY)
+    {
+        ArgumentNullException.ThrowIfNull(character);
+
+        if (!IsCombatActive || _combatGrid is null)
+        {
+            return false;
+        }
+
+        if (targetX == character.PositionX && targetY == character.PositionY)
+        {
+            return false;
+        }
+
+        // Verifica opportunità di attacco (Prompt 4.13)
+        if (!ProcessOpportunityAttacks(character))
+        {
+            return false; // Personaggio ucciso da AoO
+        }
+
+        var path = GetPath(character, targetX, targetY);
+
+        if (path is null || path.Count <= 1)
+        {
+            LogMessage($"{character.Name} non può raggiungere ({targetX}, {targetY}).");
+            return false;
+        }
+
+        var stepsAvailable = Math.Min(character.RemainingMovement, path.Count - 1);
+
+        if (stepsAvailable <= 0)
+        {
+            LogMessage($"{character.Name} non ha movimento residuo.");
+            return false;
+        }
+
+        var stepsTaken = 0;
+        var currentPosition = new GridPosition(character.PositionX, character.PositionY);
+
+        for (var i = 1; i < path.Count && stepsTaken < stepsAvailable; i++)
+        {
+            var nextPosition = path[i];
+
+            if (!_combatGrid.TryTransitionOccupant(currentPosition, nextPosition, character))
+            {
+                LogMessage($"Percorso bloccato in {nextPosition}.");
+                break;
+            }
+
+            character.SetPosition(nextPosition.X, nextPosition.Y);
+            stepsTaken++;
+            currentPosition = nextPosition;
+            LogMessage($"{character.Name} → {currentPosition}");
+        }
+
+        if (stepsTaken <= 0)
+        {
+            return false;
+        }
+
+        character.ConsumeMovement(stepsTaken);
+        LogMessage($"{character.Name} termina movimento. Passi: {stepsTaken}, residuo: {character.RemainingMovement}");
+
+        return currentPosition.X == targetX && currentPosition.Y == targetY;
+    }
+
+    /// <summary>
+    /// Processa attacchi di opportunità quando un personaggio si muove (Prompt 4.13).
+    /// </summary>
+    private bool ProcessOpportunityAttacks(Character mover)
+    {
+        if (_combatGrid is null)
+        {
+            return true;
+        }
+
+        var moverPos = new GridPosition(mover.PositionX, mover.PositionY);
+        var enemies = mover.IsPlayer ? Enemies : Players;
+        var adjacentEnemies = new List<Character>();
+
+        // Trova nemici adiacenti
+        foreach (var enemy in enemies)
+        {
+            if (enemy.CurrentHealth <= 0)
+            {
+                continue;
+            }
+
+            var enemyPos = new GridPosition(enemy.PositionX, enemy.PositionY);
+            var distance = CalculateDistance(moverPos, enemyPos);
+
+            if (distance <= 1.5f) // Adiacente (inclusi diagonali)
+            {
+                adjacentEnemies.Add(enemy);
+            }
+        }
+
+        // Esegui attacchi di opportunità
+        foreach (var enemy in adjacentEnemies)
+        {
+            if (_reactionsUsed.TryGetValue(enemy, out var used) && used)
+            {
+                continue; // Questo nemico ha già usato la reazione
+            }
+
+            LogMessage($"{enemy.Name} effettua un attacco di opportunità su {mover.Name}!");
+            _reactionsUsed[enemy] = true;
+
+            PerformAttack(enemy, mover);
+
+            if (mover.CurrentHealth <= 0)
+            {
+                LogMessage($"{mover.Name} viene abbattuto durante il movimento!");
+                return false; // Movimento interrotto
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Calcola bonus copertura (Prompt 4.11).
+    /// </summary>
+    private int CalculateCoverBonus(Character attacker, Character defender)
+    {
+        if (_combatGrid is null)
+        {
+            return 0;
+        }
+
+        var attackerPos = new GridPosition(attacker.PositionX, attacker.PositionY);
+        var defenderPos = new GridPosition(defender.PositionX, defender.PositionY);
+
+        // Usa Bresenham per tracciare linea
+        var linePoints = GetLineOfSight(attackerPos, defenderPos);
+        var obstaclesNearTarget = 0;
+        var totalObstacles = 0;
+
+        foreach (var point in linePoints)
+        {
+            if (point == attackerPos || point == defenderPos)
+            {
+                continue;
+            }
+
+            if (_combatGrid.GetTile(point) == TileType.Obstacle)
+            {
+                totalObstacles++;
+                var distToTarget = CalculateDistance(point, defenderPos);
+                if (distToTarget <= 1.5f)
+                {
+                    obstaclesNearTarget++;
+                }
+            }
+        }
+
+        // Copertura pesante: ostacolo adiacente al target
+        if (obstaclesNearTarget > 0)
+        {
+            return 5; // 3/4 cover
+        }
+
+        // Copertura leggera: ostacoli sulla linea
+        if (totalObstacles > 0)
+        {
+            return 2; // 1/2 cover
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Traccia una linea tra due punti usando algoritmo di Bresenham.
+    /// </summary>
+    private List<GridPosition> GetLineOfSight(GridPosition from, GridPosition to)
+    {
+        var points = new List<GridPosition>();
+        var x0 = from.X;
+        var y0 = from.Y;
+        var x1 = to.X;
+        var y1 = to.Y;
+
+        var dx = Math.Abs(x1 - x0);
+        var dy = Math.Abs(y1 - y0);
+        var sx = x0 < x1 ? 1 : -1;
+        var sy = y0 < y1 ? 1 : -1;
+        var err = dx - dy;
+
+        while (true)
+        {
+            points.Add(new GridPosition(x0, y0));
+
+            if (x0 == x1 && y0 == y1)
+            {
+                break;
+            }
+
+            var e2 = 2 * err;
+            if (e2 > -dy)
+            {
+                err -= dy;
+                x0 += sx;
+            }
+            if (e2 < dx)
+            {
+                err += dx;
+                y0 += sy;
+            }
+        }
+
+        return points;
+    }
+
+    private bool IsWithinAttackRange(Character attacker, Character defender)
+    {
+        var distance = CalculateDistance(
+            new GridPosition(attacker.PositionX, attacker.PositionY),
+            new GridPosition(defender.PositionX, defender.PositionY));
+
+        var weapon = attacker.EquippedWeapon;
+
+        if (weapon?.Type?.Contains("Ranged", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return distance <= 5;
+        }
+
+        return distance <= 1.5f;
+    }
+
+    private static float CalculateDistance(GridPosition from, GridPosition to)
+    {
+        var dx = to.X - from.X;
+        var dy = to.Y - from.Y;
+        return Mathf.Sqrt(dx * dx + dy * dy);
+    }
+
+    private int CalculateAttackBonus(Character attacker)
+    {
+        var weapon = attacker.EquippedWeapon;
+        var isRanged = weapon?.Type?.Contains("Ranged", StringComparison.OrdinalIgnoreCase) == true;
+        var attributeBonus = isRanged ? attacker.Dexterity / 2 : attacker.Strength / 2;
+        var weaponAccuracy = weapon?.AccuracyBonus ?? 0;
+
+        var skillName = isRanged ? "Archery" : "OneHandedWeapons";
+        var skillBonus = attacker.Skills.TryGetValue(skillName, out var skill) ? skill / 5 : 0;
+
+        return attributeBonus + weaponAccuracy + skillBonus;
+    }
+
+    private int CalculateArmorClass(Character defender)
+    {
+        var baseAC = 10;
+        var dexMod = defender.Dexterity / 2;
+        var armorBonus = defender.EquippedArmor?.DefenseBonus ?? 0;
+        return baseAC + dexMod + armorBonus;
+    }
+
+    private int CalculateDamage(Character attacker, Character defender, bool isCritical)
+    {
+        var weapon = attacker.EquippedWeapon;
+
+        int baseDamage;
+        if (weapon?.MinDamage is { } min && weapon.MaxDamage is { } max)
+        {
+            baseDamage = _rng.RandiRange(min, max);
+        }
+        else
+        {
+            baseDamage = _rng.RandiRange(1, 3);
+        }
+
+        var isRanged = weapon?.Type?.Contains("Ranged", StringComparison.OrdinalIgnoreCase) == true;
+        var attributeBonus = isRanged ? attacker.Dexterity / 2 : attacker.Strength / 2;
+
+        if (isCritical)
+        {
+            baseDamage *= 2;
+        }
+
+        var totalDamage = baseDamage + attributeBonus;
+        var damageReduction = defender.EquippedArmor?.DefenseBonus ?? 0;
+        totalDamage = Math.Max(0, totalDamage - damageReduction);
+
+        return Math.Max(1, totalDamage);
+    }
+
+    private void UpdatePlayerStatsDisplay()
+    {
+        var game = Game.Instance;
+        if (game?.Player is { } player && game.HUD is { } hud)
+        {
+            hud.UpdatePlayerStats(
+                player.CurrentHealth,
+                player.MaxHealth,
+                player.CurrentMana,
+                player.MaxMana);
+
+            // Aggiorna status effects (Prompt 4.10)
+            hud.UpdateStatusEffects(player.GetStatusEffectsDisplay());
+        }
+    }
+
+    private void UpdateTurnDisplay()
+    {
+        if (CurrentCharacter is null) return;
+
+        var game = Game.Instance;
+        game?.HUD?.UpdateTurnIndicator(CurrentCharacter.Name, RoundNumber);
+    }
+
+    private void ExecutePlayerTurn(Character player)
+    {
+        _activePlayerCharacter = player;
+        AwaitingMoveTarget = false;
+        AwaitingAttackTarget = false;
+
+        // Aggiorna display player (Prompt 4.8)
+        UpdatePlayerStatsDisplay();
+
+        if (ActionMenu is null)
+        {
+            LogMessage($"{player.Name} attende azione, ma ActionMenu non disponibile.");
+            return;
+        }
+
+        ActionMenu.ShowMenu();
+        LogMessage($"{player.Name} attende un'azione.");
+    }
+
+    private void ExecuteEnemyAI(Character enemy)
+    {
+        LogMessage($"{enemy.Name} (nemico) agisce.");
+
+        var target = Players.FirstOrDefault(p => p.CurrentHealth > 0);
+        if (target is null)
+        {
+            LogMessage("Nessun player valido da attaccare.");
+            return;
+        }
+
+        PerformAttack(enemy, target);
     }
 
     private void RemoveDefeatedCombatants()
     {
         if (_combatGrid is not null)
         {
-            foreach (var defeated in Players.Concat(Enemies).Where(character => character.CurrentHealth <= 0).ToList())
+            foreach (var defeated in Players.Concat(Enemies).Where(c => c.CurrentHealth <= 0))
             {
                 _combatGrid.Vacate(new GridPosition(defeated.PositionX, defeated.PositionY), defeated);
             }
         }
 
-        var removedFromTurnOrder = TurnOrder.RemoveAll(character => character.CurrentHealth <= 0);
+        var removed = TurnOrder.RemoveAll(c => c.CurrentHealth <= 0);
 
-        if (removedFromTurnOrder > 0)
+        if (removed > 0)
         {
-            Players.RemoveAll(character => character.CurrentHealth <= 0);
-            Enemies.RemoveAll(character => character.CurrentHealth <= 0);
+            Players.RemoveAll(c => c.CurrentHealth <= 0);
+            Enemies.RemoveAll(c => c.CurrentHealth <= 0);
 
-            if (TurnOrder.Count == 0)
-            {
-                CurrentTurnIndex = 0;
-            }
-            else
-            {
-                CurrentTurnIndex %= TurnOrder.Count;
-            }
+            CurrentTurnIndex = TurnOrder.Count == 0 ? 0 : CurrentTurnIndex % TurnOrder.Count;
         }
     }
 
     private bool CheckBattleEnd()
     {
-        var anyPlayerAlive = Players.Any(character => character.CurrentHealth > 0);
-        var anyEnemyAlive = Enemies.Any(character => character.CurrentHealth > 0);
+        var playersAlive = Players.Any(c => c.CurrentHealth > 0);
+        var enemiesAlive = Enemies.Any(c => c.CurrentHealth > 0);
 
-        if (anyPlayerAlive && anyEnemyAlive)
+        if (playersAlive && enemiesAlive)
         {
             return false;
         }
 
-        if (!anyEnemyAlive && !anyPlayerAlive)
+        if (!enemiesAlive && !playersAlive)
         {
             LogMessage("Combattimento terminato senza vincitori.");
         }
-        else if (!anyEnemyAlive)
+        else if (!enemiesAlive)
         {
-            LogMessage("Combattimento terminato: Vittoria del giocatore!");
+            LogMessage("Vittoria del giocatore!");
         }
         else
         {
@@ -458,6 +815,7 @@ public sealed partial class CombatManager : Node
         Players.Clear();
         Enemies.Clear();
         TurnOrder.Clear();
+        _reactionsUsed.Clear();
         CurrentTurnIndex = 0;
         RoundNumber = 0;
         IsCombatActive = false;
@@ -491,10 +849,168 @@ public sealed partial class CombatManager : Node
     private void HandleNewRoundStart()
     {
         ResetMovementAllowancesForParticipants();
+
+        // Reset reactions (Prompt 4.13)
+        _reactionsUsed.Clear();
+
         LogMessage($"Round {RoundNumber} inizia!");
     }
 
-    private readonly record struct InitiativeEntry(Character Combatant, int Total, int DexterityScore, float TieBreaker);
+    private void ResetMovementAllowancesForParticipants()
+    {
+        foreach (var combatant in Players.Concat(Enemies))
+        {
+            combatant.ResetMovementForNewTurn();
+        }
+    }
+
+    public bool CanMoveTo(Character character, int targetX, int targetY)
+    {
+        ArgumentNullException.ThrowIfNull(character);
+
+        if (!IsCombatActive || _combatGrid is null || character.RemainingMovement <= 0)
+        {
+            return false;
+        }
+
+        var target = new GridPosition(targetX, targetY);
+        return _combatGrid.IsWithinBounds(target) && _combatGrid.CanOccupy(target, character);
+    }
+
+    public IReadOnlyList<GridPosition>? GetPath(Character character, int targetX, int targetY)
+    {
+        ArgumentNullException.ThrowIfNull(character);
+
+        if (!CanMoveTo(character, targetX, targetY))
+        {
+            return null;
+        }
+
+        var start = new GridPosition(character.PositionX, character.PositionY);
+        var dest = new GridPosition(targetX, targetY);
+
+        return _pathfinder.FindPath(_combatGrid!, character, start, dest);
+    }
+
+    public override void _Input(InputEvent @event)
+    {
+        base._Input(@event);
+
+        if (!IsCombatActive || _battleTileLayer is null)
+        {
+            return;
+        }
+
+        if (@event is not InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
+        {
+            return;
+        }
+
+        if (!AwaitingMoveTarget && !AwaitingAttackTarget)
+        {
+            return;
+        }
+
+        var viewport = GetViewport();
+        if (viewport is null) return;
+
+        var clickPos = viewport.GetMousePosition();
+        var localPos = _battleTileLayer.ToLocal(clickPos);
+        var cell = _battleTileLayer.LocalToMap(localPos);
+
+        HandleTileSelection(cell);
+    }
+
+    private void HandleTileSelection(Vector2I cell)
+    {
+        if (_combatGrid is null) return;
+
+        var gridPos = new GridPosition(cell.X, cell.Y);
+
+        if (!_combatGrid.IsWithinBounds(gridPos))
+        {
+            LogMessage("Cella fuori dalla griglia.");
+            return;
+        }
+
+        if (AwaitingMoveTarget && CurrentCharacter is { } mover && Players.Contains(mover))
+        {
+            HandleMoveSelection(mover, gridPos);
+            return;
+        }
+
+        if (AwaitingAttackTarget && CurrentCharacter is { } attacker && Players.Contains(attacker))
+        {
+            HandleAttackSelection(attacker, gridPos);
+        }
+    }
+
+    private void HandleMoveSelection(Character character, GridPosition destination)
+    {
+        if (!CanMoveTo(character, destination.X, destination.Y))
+        {
+            LogMessage($"{character.Name} non può raggiungere {destination}.");
+            return;
+        }
+
+        var reached = MoveCharacter(character, destination.X, destination.Y);
+
+        if (reached || character.RemainingMovement <= 0)
+        {
+            AwaitingMoveTarget = false;
+            LogMessage($"{character.Name} termina il movimento.");
+            EndTurn();
+        }
+    }
+
+    private void HandleAttackSelection(Character attacker, GridPosition destination)
+    {
+        var target = FindCharacterAt(destination);
+
+        if (target is null)
+        {
+            LogMessage("Nessun bersaglio su quella cella.");
+            return;
+        }
+
+        if (!Enemies.Contains(target))
+        {
+            LogMessage($"{attacker.Name} non può attaccare {target.Name}: non è un nemico.");
+            return;
+        }
+
+        AwaitingAttackTarget = false;
+        PerformAttack(attacker, target);
+
+        if (IsCombatActive)
+        {
+            EndTurn();
+        }
+    }
+
+    private Character? FindCharacterAt(GridPosition position)
+    {
+        return _combatGrid?.GetOccupant(position);
+    }
+
+    private static void LogMessage(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        var game = Game.Instance;
+        if (game?.HUD is { } hud)
+        {
+            hud.AddLogMessage(message);
+            return;
+        }
+
+        GD.Print(message);
+    }
+
+    // Grid initialization and rendering methods
 
     private void InitializeArenaLayout()
     {
@@ -516,7 +1032,6 @@ public sealed partial class CombatManager : Node
         grid.SetTile(new GridPosition(6, 7), TileType.Obstacle);
 
         _combatGrid = grid;
-
         LogMessage($"Griglia di combattimento inizializzata: {DefaultGridWidth}x{DefaultGridHeight}.");
         ShowBattleGrid();
     }
@@ -525,28 +1040,18 @@ public sealed partial class CombatManager : Node
     {
         if (_combatGrid is null)
         {
-            LogMessage("Impossibile posizionare i combattenti: la griglia non è pronta.");
+            LogMessage("Impossibile posizionare combattenti: griglia non pronta.");
             return;
         }
 
         var playerSpawns = new List<GridPosition>
         {
-            new(2, 2),
-            new(3, 2),
-            new(2, 3),
-            new(3, 3),
-            new(2, 4),
-            new(3, 4),
+            new(2, 2), new(3, 2), new(2, 3), new(3, 3), new(2, 4), new(3, 4),
         };
 
         var enemySpawns = new List<GridPosition>
         {
-            new(7, 7),
-            new(6, 7),
-            new(7, 6),
-            new(6, 6),
-            new(7, 5),
-            new(6, 5),
+            new(7, 7), new(6, 7), new(7, 6), new(6, 6), new(7, 5), new(6, 5),
         };
 
         PlaceCombatantsAtPositions(Players, playerSpawns, "alleato");
@@ -597,166 +1102,9 @@ public sealed partial class CombatManager : Node
             }
             else
             {
-                LogMessage($"Nessuna cella libera disponibile per {combatant.Name} ({factionLabel}).");
+                LogMessage($"Nessuna cella libera per {combatant.Name} ({factionLabel}).");
             }
         }
-    }
-
-    private void ResetMovementAllowancesForParticipants()
-    {
-        foreach (var combatant in Players.Concat(Enemies))
-        {
-            combatant.ResetMovementForNewTurn();
-        }
-    }
-
-    public bool CanMoveTo(Character character, int targetX, int targetY)
-    {
-        ArgumentNullException.ThrowIfNull(character);
-
-        if (!IsCombatActive || _combatGrid is null)
-        {
-            return false;
-        }
-
-        if (character.RemainingMovement <= 0)
-        {
-            return false;
-        }
-
-        var target = new GridPosition(targetX, targetY);
-
-        if (!_combatGrid.IsWithinBounds(target))
-        {
-            return false;
-        }
-
-        return _combatGrid.CanOccupy(target, character);
-    }
-
-    public IReadOnlyList<GridPosition>? GetPath(Character character, int targetX, int targetY)
-    {
-        ArgumentNullException.ThrowIfNull(character);
-
-        if (!CanMoveTo(character, targetX, targetY))
-        {
-            return null;
-        }
-
-        var grid = _combatGrid!;
-        var start = new GridPosition(character.PositionX, character.PositionY);
-        var destination = new GridPosition(targetX, targetY);
-
-        return _pathfinder.FindPath(grid, character, start, destination);
-    }
-
-    public bool MoveCharacter(Character character, int targetX, int targetY)
-    {
-        ArgumentNullException.ThrowIfNull(character);
-
-        if (!IsCombatActive || _combatGrid is null)
-        {
-            return false;
-        }
-
-        if (targetX == character.PositionX && targetY == character.PositionY)
-        {
-            return false;
-        }
-
-        var path = GetPath(character, targetX, targetY);
-
-        if (path is null || path.Count <= 1)
-        {
-            LogMessage($"{character.Name} non può raggiungere la destinazione ({targetX}, {targetY}).");
-            return false;
-        }
-
-        var stepsAvailable = Math.Min(character.RemainingMovement, path.Count - 1);
-
-        if (stepsAvailable <= 0)
-        {
-            LogMessage($"{character.Name} non ha movimento residuo.");
-            return false;
-        }
-
-        var stepsTaken = 0;
-        var currentPosition = new GridPosition(character.PositionX, character.PositionY);
-
-        for (var i = 1; i < path.Count && stepsTaken < stepsAvailable; i++)
-        {
-            var nextPosition = path[i];
-
-            if (!_combatGrid.TryTransitionOccupant(currentPosition, nextPosition, character))
-            {
-                LogMessage($"Il percorso di {character.Name} è stato bloccato in {nextPosition}.");
-                break;
-            }
-
-            character.SetPosition(nextPosition.X, nextPosition.Y);
-            stepsTaken++;
-            currentPosition = nextPosition;
-            LogMessage($"{character.Name} avanza a {currentPosition}.");
-        }
-
-        if (stepsTaken <= 0)
-        {
-            return false;
-        }
-
-        character.ConsumeMovement(stepsTaken);
-        LogMessage($"{character.Name} termina il movimento a {currentPosition}. Passi usati: {stepsTaken}, residuo: {character.RemainingMovement}.");
-
-        return currentPosition.X == targetX && currentPosition.Y == targetY;
-    }
-
-    public override void _Input(InputEvent @event)
-    {
-        base._Input(@event);
-
-        if (!IsCombatActive || _battleTileLayer is null)
-        {
-            return;
-        }
-
-        if (@event is not InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
-        {
-            return;
-        }
-
-        if (!AwaitingMoveTarget && !AwaitingAttackTarget)
-        {
-            return;
-        }
-
-        var viewport = GetViewport();
-        if (viewport is null)
-        {
-            return;
-        }
-
-        var clickPosition = viewport.GetMousePosition();
-        var localPosition = _battleTileLayer.ToLocal(clickPosition);
-        var cell = _battleTileLayer.LocalToMap(localPosition);
-
-        HandleTileSelection(cell);
-    }
-
-    private static void LogMessage(string message)
-    {
-        if (string.IsNullOrWhiteSpace(message))
-        {
-            return;
-        }
-
-        var game = Game.Instance;
-        if (game?.HUD is { } hud)
-        {
-            hud.AddLogMessage(message);
-            return;
-        }
-
-        GD.Print(message);
     }
 
     private void EnsureBattleTileLayerReady()
@@ -765,7 +1113,7 @@ public sealed partial class CombatManager : Node
 
         if (_battleTileLayer is null)
         {
-            GD.PushWarning("TileMapLayer BattleGrid non trovata nella scena di combattimento.");
+            GD.PushWarning("TileMapLayer BattleGrid non trovata.");
             return;
         }
 
@@ -850,94 +1198,6 @@ public sealed partial class CombatManager : Node
         }
     }
 
-    private void HandleTileSelection(Vector2I cell)
-    {
-        if (_combatGrid is null)
-        {
-            return;
-        }
-
-        var gridPosition = new GridPosition(cell.X, cell.Y);
-
-        if (!_combatGrid.IsWithinBounds(gridPosition))
-        {
-            LogMessage("La cella selezionata è fuori dalla griglia di combattimento.");
-            return;
-        }
-
-        if (AwaitingMoveTarget && CurrentCharacter is { } movingCharacter && Players.Contains(movingCharacter))
-        {
-            HandleMoveSelection(movingCharacter, gridPosition);
-            return;
-        }
-
-        if (AwaitingAttackTarget && CurrentCharacter is { } attackingCharacter && Players.Contains(attackingCharacter))
-        {
-            HandleAttackSelection(attackingCharacter, gridPosition);
-        }
-    }
-
-    private void HandleMoveSelection(Character character, GridPosition destination)
-    {
-        if (!CanMoveTo(character, destination.X, destination.Y))
-        {
-            LogMessage($"{character.Name} non può raggiungere la cella {destination}.");
-            return;
-        }
-
-        var reachedTarget = MoveCharacter(character, destination.X, destination.Y);
-
-        if (reachedTarget)
-        {
-            AwaitingMoveTarget = false;
-            LogMessage($"{character.Name} termina il movimento.");
-            EndTurn();
-            return;
-        }
-
-        if (character.RemainingMovement <= 0)
-        {
-            AwaitingMoveTarget = false;
-            LogMessage($"{character.Name} non ha altro movimento disponibile.");
-            EndTurn();
-        }
-    }
-
-    private void HandleAttackSelection(Character attacker, GridPosition destination)
-    {
-        var target = FindCharacterAt(destination);
-
-        if (target is null)
-        {
-            LogMessage("Nessun bersaglio presente su quella cella.");
-            return;
-        }
-
-        if (!Enemies.Contains(target))
-        {
-            LogMessage($"{attacker.Name} non può attaccare {target.Name}: non è un nemico valido.");
-            return;
-        }
-
-        AwaitingAttackTarget = false;
-        ResolveBasicAttack(attacker, target);
-
-        if (IsCombatActive)
-        {
-            EndTurn();
-        }
-    }
-
-    private Character? FindCharacterAt(GridPosition position)
-    {
-        if (_combatGrid is null)
-        {
-            return null;
-        }
-
-        return _combatGrid.GetOccupant(position);
-    }
-
     private void ShowBattleGrid()
     {
         EnsureBattleTileLayerReady();
@@ -958,4 +1218,6 @@ public sealed partial class CombatManager : Node
         _battleTileLayer.Visible = false;
         _battleTileLayer.Clear();
     }
+
+    private readonly record struct InitiativeEntry(Character Combatant, int Total, int DexterityScore, float TieBreaker);
 }
