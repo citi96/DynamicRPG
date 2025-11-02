@@ -30,7 +30,7 @@ StoneColor = Color(0.396078, 0.396078, 0.396078, 1)
 [node name="World" type="Node2D" parent="."]
 y_sort_enabled = true
 
-[node name="Terrain" type="TileMap" parent="World"]
+[node name="Terrain" type="TileMapLayer" parent="World"]
 format = 2
 
 [node name="Foliage" type="Node2D" parent="World"]
