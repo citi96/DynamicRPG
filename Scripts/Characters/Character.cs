@@ -717,7 +717,7 @@ public partial class Character : Node2D
             return;
         }
 
-        if (Game.Instance?.HUD is { } hud)
+        if (Game.Instance?.Hud is { } hud)
         {
             hud.UpdatePlayerStats(CurrentHealth, MaxHealth, CurrentMana, MaxMana);
         }

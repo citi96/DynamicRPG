@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3 uid="uid://hudscene"]
 
-[ext_resource type="Script" uid="uid://qdxscg6so5si" path="res://Scripts/UI/HUD.cs" id="1"]
+[ext_resource type="Script" uid="uid://qdxscg6so5si" path="res://Scripts/UI/Hud.cs" id="1"]
 [ext_resource type="Script" uid="uid://ctionmenu" path="res://Scripts/UI/ActionMenu.cs" id="2"]
 
 [node name="HUD" type="Control"]
