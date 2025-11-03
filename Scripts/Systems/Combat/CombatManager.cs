@@ -748,7 +748,7 @@ public sealed partial class CombatManager : Node
     private void UpdatePlayerStatsDisplay()
     {
         var game = Game.Instance;
-        if (game?.Player is { } player && game.HUD is { } hud)
+        if (game?.Player is { } player && game.Hud is { } hud)
         {
             hud.UpdatePlayerStats(
                 player.CurrentHealth,
@@ -766,7 +766,7 @@ public sealed partial class CombatManager : Node
         if (CurrentCharacter is null) return;
 
         var game = Game.Instance;
-        game?.HUD?.UpdateTurnIndicator(CurrentCharacter.Name, RoundNumber);
+        game?.Hud?.UpdateTurnIndicator(CurrentCharacter.Name, RoundNumber);
     }
 
     private void ExecutePlayerTurn(Character player)
@@ -1043,7 +1043,7 @@ public sealed partial class CombatManager : Node
         }
 
         var game = Game.Instance;
-        if (game?.HUD is { } hud)
+        if (game?.Hud is { } hud)
         {
             hud.AddLogMessage(message);
             return;

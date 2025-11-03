@@ -6,9 +6,9 @@ using Godot;
 namespace DynamicRPG.UI;
 
 /// <summary>
-/// Provides a combat heads-up display (HUD) for showing combat log messages and player stats.
+/// Provides a combat heads-up display for showing combat log messages and player stats.
 /// </summary>
-public sealed partial class HUD : Control
+public sealed partial class Hud : Control
 {
     private RichTextLabel? _combatLog;
     private Label? _hpLabel;
@@ -16,6 +16,9 @@ public sealed partial class HUD : Control
     private Label? _turnLabel;
     private Label? _statusEffectsLabel;
 
+    /// <summary>
+    /// Gets the combat action menu bound to the HUD.
+    /// </summary>
     public ActionMenu? ActionMenu { get; private set; }
 
     public override void _Ready()
@@ -68,12 +71,12 @@ public sealed partial class HUD : Control
     /// <summary>
     /// Updates the player stats display (HP and Mana).
     /// </summary>
-    public void UpdatePlayerStats(int currentHP, int maxHP, int currentMana, int maxMana)
+    public void UpdatePlayerStats(int currentHp, int maxHp, int currentMana, int maxMana)
     {
         // TODO: Add visual feedback (e.g., flashing text) when the player takes damage.
         if (_hpLabel is not null)
         {
-            _hpLabel.Text = $"HP: {currentHP}/{maxHP}";
+            _hpLabel.Text = $"HP: {currentHp}/{maxHp}";
         }
 
         if (_manaLabel is not null)

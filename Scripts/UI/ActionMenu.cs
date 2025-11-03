@@ -107,7 +107,7 @@ public sealed partial class ActionMenu : Panel
     private void OnEndTurnPressed()
     {
         DisableMenuForAction();
-        Game.Instance?.HUD?.AddLogMessage("Turno terminato da giocatore.");
+        Game.Instance?.Hud?.AddLogMessage("Turno terminato da giocatore.");
         GetCombatManager()?.EndTurn();
     }
 }
