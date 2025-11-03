@@ -1,11 +1,12 @@
-[gd_scene load_steps=2 format=3 uid="uid://combat"]
+[gd_scene load_steps=3 format=3 uid="uid://combat"]
 
 [ext_resource type="Script" uid="uid://combatmanager" path="res://Scripts/Systems/Combat/CombatManager.cs" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/combat/BattleGrid.tscn" id="2"]
 
 [node name="Combat" type="Node"]
 script = ExtResource("1")
 
-[node name="BattleGrid" type="TileMapLayer" parent="."]
+[node name="BattleGrid" parent="." instance=ExtResource("2")]
 
 [node name="Arena" type="Node2D" parent="."]
 
