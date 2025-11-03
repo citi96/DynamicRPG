@@ -114,6 +114,11 @@ public partial class Character : Node2D
     public int CurrentHealth { get; private set; }
 
     /// <summary>
+    /// Gets a value indicating whether the character has been reduced to zero hit points.
+    /// </summary>
+    public bool IsDead { get; private set; }
+
+    /// <summary>
     /// Gets the current health points using the common HP naming convention.
     /// </summary>
     public int HP => CurrentHealth;
@@ -583,10 +588,10 @@ public partial class Character : Node2D
             throw new ArgumentOutOfRangeException(nameof(damageAmount), damageAmount, "Damage cannot be negative.");
         }
 
-        var mitigatedDamage = Math.Max(damageAmount - TotalDefense, 0);
-        CurrentHealth = Math.Max(CurrentHealth - mitigatedDamage, 0);
+        CurrentHealth = Math.Max(CurrentHealth - damageAmount, 0);
+        IsDead = CurrentHealth <= 0;
 
-        return CurrentHealth == 0;
+        return IsDead;
     }
 
     /// <summary>
@@ -601,6 +606,7 @@ public partial class Character : Node2D
         MaxMana = BaseMana + (Intelligence * ManaPerIntelligencePoint);
 
         CurrentHealth = NormalizeResourceValue(CurrentHealth, previousMaxHealth, MaxHealth);
+        IsDead = CurrentHealth <= 0;
         CurrentMana = NormalizeResourceValue(CurrentMana, previousMaxMana, MaxMana);
 
         RefreshCombatStatistics();
