@@ -1151,11 +1151,11 @@ public sealed partial class CombatManager : Node
 
     private void EnsureBattleTileLayerReady()
     {
-        _battleTileLayer ??= GetNodeOrNull<TileMapLayer>("BattleGrid");
+        _battleTileLayer ??= GetNodeOrNull<TileMapLayer>("BattleGrid/GridLayer");
 
         if (_battleTileLayer is null)
         {
-            GD.PushWarning("TileMapLayer BattleGrid non trovata.");
+            GD.PushWarning("TileMapLayer BattleGrid/GridLayer non trovata.");
             return;
         }
 
@@ -1247,6 +1247,10 @@ public sealed partial class CombatManager : Node
         if (_battleTileLayer is not null)
         {
             _battleTileLayer.Visible = true;
+            if (_battleTileLayer.GetParent() is CanvasItem canvasParent)
+            {
+                canvasParent.Visible = true;
+            }
         }
     }
 
@@ -1259,6 +1263,10 @@ public sealed partial class CombatManager : Node
 
         _battleTileLayer.Visible = false;
         _battleTileLayer.Clear();
+        if (_battleTileLayer.GetParent() is CanvasItem canvasParent)
+        {
+            canvasParent.Visible = false;
+        }
     }
 
     private readonly record struct InitiativeEntry(Character Combatant, int Total, int DexterityScore, float TieBreaker);

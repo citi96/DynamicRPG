@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://battlegrid"]
+
+[node name="BattleGrid" type="TileMap"]
+y_sort_enabled = true
+
+[node name="GridLayer" type="TileMapLayer" parent="."]
