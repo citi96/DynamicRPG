@@ -1,3 +1,4 @@
+using DynamicRPG;
 using DynamicRPG.Items;
 using DynamicRPG.Systems.Combat;
 using DynamicRPG.World;
@@ -588,10 +589,98 @@ public partial class Character : Node2D
             throw new ArgumentOutOfRangeException(nameof(damageAmount), damageAmount, "Damage cannot be negative.");
         }
 
+        var previousHealth = CurrentHealth;
         CurrentHealth = Math.Max(CurrentHealth - damageAmount, 0);
         IsDead = CurrentHealth <= 0;
 
+        if (CurrentHealth != previousHealth)
+        {
+            NotifyPlayerStatsChanged();
+        }
+
         return IsDead;
+    }
+
+    /// <summary>
+    /// Restores health points up to the maximum value.
+    /// </summary>
+    /// <param name="amount">The amount of HP to restore.</param>
+    /// <returns>The actual HP restored.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="amount"/> is negative.</exception>
+    public int Heal(int amount)
+    {
+        if (amount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(amount), amount, "Healing cannot be negative.");
+        }
+
+        if (amount == 0 || CurrentHealth >= MaxHealth)
+        {
+            return 0;
+        }
+
+        var previousHealth = CurrentHealth;
+        CurrentHealth = Math.Clamp(CurrentHealth + amount, 0, MaxHealth);
+        IsDead = CurrentHealth <= 0;
+
+        if (CurrentHealth != previousHealth)
+        {
+            NotifyPlayerStatsChanged();
+        }
+
+        return CurrentHealth - previousHealth;
+    }
+
+    /// <summary>
+    /// Attempts to spend mana points required for an ability.
+    /// </summary>
+    /// <param name="amount">The mana cost.</param>
+    /// <returns><c>true</c> when enough mana was available; otherwise <c>false</c>.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="amount"/> is negative.</exception>
+    public bool TrySpendMana(int amount)
+    {
+        if (amount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(amount), amount, "Mana cost cannot be negative.");
+        }
+
+        if (CurrentMana < amount)
+        {
+            return false;
+        }
+
+        CurrentMana -= amount;
+        NotifyPlayerStatsChanged();
+        return true;
+    }
+
+    /// <summary>
+    /// Restores mana points up to the maximum value.
+    /// </summary>
+    /// <param name="amount">The amount of mana to restore.</param>
+    /// <returns>The actual mana restored.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="amount"/> is negative.</exception>
+    public int RestoreMana(int amount)
+    {
+        if (amount < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(amount), amount, "Mana restoration cannot be negative.");
+        }
+
+        if (amount == 0 || CurrentMana >= MaxMana)
+        {
+            return 0;
+        }
+
+        var previousMana = CurrentMana;
+        CurrentMana = Math.Clamp(CurrentMana + amount, 0, MaxMana);
+
+        if (CurrentMana != previousMana)
+        {
+            NotifyPlayerStatsChanged();
+        }
+
+        return CurrentMana - previousMana;
     }
 
     /// <summary>
@@ -601,6 +690,8 @@ public partial class Character : Node2D
     {
         var previousMaxHealth = MaxHealth;
         var previousMaxMana = MaxMana;
+        var previousCurrentHealth = CurrentHealth;
+        var previousCurrentMana = CurrentMana;
 
         MaxHealth = BaseHealth + (Constitution * HealthPerConstitutionPoint);
         MaxMana = BaseMana + (Intelligence * ManaPerIntelligencePoint);
@@ -609,9 +700,27 @@ public partial class Character : Node2D
         IsDead = CurrentHealth <= 0;
         CurrentMana = NormalizeResourceValue(CurrentMana, previousMaxMana, MaxMana);
 
+        if (CurrentHealth != previousCurrentHealth || CurrentMana != previousCurrentMana)
+        {
+            NotifyPlayerStatsChanged();
+        }
+
         RefreshCombatStatistics();
         SynchronizeCarryCapacity();
         HandleInventoryWeightChanged(Inventory.GetTotalWeight());
+    }
+
+    private void NotifyPlayerStatsChanged()
+    {
+        if (!IsPlayer)
+        {
+            return;
+        }
+
+        if (Game.Instance?.HUD is { } hud)
+        {
+            hud.UpdatePlayerStats(CurrentHealth, MaxHealth, CurrentMana, MaxMana);
+        }
     }
 
     private void RefreshCombatStatistics()

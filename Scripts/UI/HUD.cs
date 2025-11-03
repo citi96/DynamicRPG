@@ -24,10 +24,10 @@ public sealed partial class HUD : Control
         ActionMenu = GetNodeOrNull<ActionMenu>("ActionPanel");
 
         // Ottieni riferimenti ai nuovi pannelli
-        _hpLabel = GetNodeOrNull<Label>("StatusPanel/HPLabel");
-        _manaLabel = GetNodeOrNull<Label>("StatusPanel/ManaLabel");
+        _hpLabel = GetNodeOrNull<Label>("StatusPanel/StatsContainer/HPLabel");
+        _manaLabel = GetNodeOrNull<Label>("StatusPanel/StatsContainer/ManaLabel");
         _turnLabel = GetNodeOrNull<Label>("TurnPanel/TurnLabel");
-        _statusEffectsLabel = GetNodeOrNull<Label>("StatusPanel/StatusEffectsLabel");
+        _statusEffectsLabel = GetNodeOrNull<Label>("StatusPanel/StatsContainer/StatusEffectsLabel");
     }
 
     /// <summary>
@@ -70,6 +70,7 @@ public sealed partial class HUD : Control
     /// </summary>
     public void UpdatePlayerStats(int currentHP, int maxHP, int currentMana, int maxMana)
     {
+        // TODO: Add visual feedback (e.g., flashing text) when the player takes damage.
         if (_hpLabel is not null)
         {
             _hpLabel.Text = $"HP: {currentHP}/{maxHP}";
