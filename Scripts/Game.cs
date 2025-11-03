@@ -236,34 +236,15 @@ public partial class Game : Node2D
 
     private static Color GetBiomeColor(string environmentType)
     {
-        var lowered = environmentType.ToLowerInvariant();
-
-        if (lowered.Contains("tundra") || lowered.Contains("ghiacci"))
+        return RegionEnvironmentClassifier.FromEnvironment(environmentType) switch
         {
-            return new Color(0.65f, 0.85f, 1.0f);
-        }
-
-        if (lowered.Contains("foresta") || lowered.Contains("bosco"))
-        {
-            return new Color(0.2f, 0.6f, 0.2f);
-        }
-
-        if (lowered.Contains("deserto") || lowered.Contains("dune"))
-        {
-            return new Color(0.9f, 0.8f, 0.55f);
-        }
-
-        if (lowered.Contains("palud") || lowered.Contains("bruma"))
-        {
-            return new Color(0.35f, 0.45f, 0.25f);
-        }
-
-        if (lowered.Contains("rovine") || lowered.Contains("citt"))
-        {
-            return new Color(0.5f, 0.5f, 0.55f);
-        }
-
-        return new Color(0.6f, 0.6f, 0.6f);
+            RegionEnvironmentCategory.Arctic => new Color(0.65f, 0.85f, 1.0f),
+            RegionEnvironmentCategory.Forest => new Color(0.2f, 0.6f, 0.2f),
+            RegionEnvironmentCategory.Desert => new Color(0.9f, 0.8f, 0.55f),
+            RegionEnvironmentCategory.Swamp => new Color(0.35f, 0.45f, 0.25f),
+            RegionEnvironmentCategory.Ruins => new Color(0.5f, 0.5f, 0.55f),
+            _ => new Color(0.6f, 0.6f, 0.6f),
+        };
     }
 
     /// <summary>
@@ -486,32 +467,15 @@ public partial class Game : Node2D
             return;
         }
 
-        var environment = region.EnvironmentType.ToLowerInvariant();
-
-        if (environment.Contains("mont") || environment.Contains("tundra") || environment.Contains("ghiacc"))
+        region.ControllingFaction = RegionEnvironmentClassifier.FromEnvironment(region.EnvironmentType) switch
         {
-            region.ControllingFaction = "Clan dei Picchi del Nord";
-        }
-        else if (environment.Contains("foresta"))
-        {
-            region.ControllingFaction = "Guardiani di Bosco Profondo";
-        }
-        else if (environment.Contains("deserto") || environment.Contains("dune"))
-        {
-            region.ControllingFaction = "Leghe dei Mercanti del Deserto";
-        }
-        else if (environment.Contains("palud") || environment.Contains("bruma"))
-        {
-            region.ControllingFaction = "Stirpe degli Stregoni delle Paludi";
-        }
-        else if (environment.Contains("rovine") || environment.Contains("citt"))
-        {
-            region.ControllingFaction = "Custodi delle Rovine";
-        }
-        else
-        {
-            region.ControllingFaction = "Fazione Indipendente";
-        }
+            RegionEnvironmentCategory.Arctic => "Clan dei Picchi del Nord",
+            RegionEnvironmentCategory.Forest => "Guardiani di Bosco Profondo",
+            RegionEnvironmentCategory.Desert => "Leghe dei Mercanti del Deserto",
+            RegionEnvironmentCategory.Swamp => "Stirpe degli Stregoni delle Paludi",
+            RegionEnvironmentCategory.Ruins => "Custodi delle Rovine",
+            _ => "Fazione Indipendente",
+        };
     }
 
     private void InitializeWeatherForRegions()
@@ -717,64 +681,56 @@ public partial class Game : Node2D
             return null;
         }
 
-        var environment = region.EnvironmentType.ToLowerInvariant();
+        var category = RegionEnvironmentClassifier.FromEnvironment(region.EnvironmentType);
+        return GenerateHazardForCategory(category, from, to);
+    }
 
-        if (environment.Contains("palud") || environment.Contains("bruma"))
+    private Hazard? GenerateHazardForCategory(RegionEnvironmentCategory category, Location from, Location to)
+    {
+        return category switch
         {
-            return _random.NextDouble() < 0.6
-                ? new Hazard(
+            RegionEnvironmentCategory.Swamp => TryCreateHazard(
+                0.6,
+                () => new Hazard(
                     "Terreno Velenoso",
                     "toxic_bog",
                     $"Il sentiero tra {from.Name} e {to.Name} attraversa pozze velenose e gas miasmatici.",
-                    3)
-                : null;
-        }
-
-        if (environment.Contains("mont") || environment.Contains("tundra") || environment.Contains("ghiacc"))
-        {
-            return _random.NextDouble() < 0.4
-                ? new Hazard(
+                    3)),
+            RegionEnvironmentCategory.Arctic => TryCreateHazard(
+                0.4,
+                () => new Hazard(
                     "Zona Valanghe",
                     "avalanche_zone",
                     $"I pendii ghiacciati tra {from.Name} e {to.Name} possono cedere in una valanga improvvisa.",
-                    4)
-                : null;
-        }
-
-        if (environment.Contains("deserto") || environment.Contains("dune"))
-        {
-            return _random.NextDouble() < 0.35
-                ? new Hazard(
+                    4)),
+            RegionEnvironmentCategory.Desert => TryCreateHazard(
+                0.35,
+                () => new Hazard(
                     "Tempesta di Sabbia",
                     "sandstorm_corridor",
                     $"Il percorso verso {to.Name} è spesso avvolto da sabbie turbinanti che azzerano la visibilità.",
-                    3)
-                : null;
-        }
-
-        if (environment.Contains("foresta"))
-        {
-            return _random.NextDouble() < 0.3
-                ? new Hazard(
+                    3)),
+            RegionEnvironmentCategory.Forest => TryCreateHazard(
+                0.3,
+                () => new Hazard(
                     "Sentiero dei Predatori",
                     "predator_ambush",
                     $"Creature fameliche tendono agguati lungo il sentiero boscoso tra {from.Name} e {to.Name}.",
-                    2)
-                : null;
-        }
-
-        if (environment.Contains("rovine") || environment.Contains("citt"))
-        {
-            return _random.NextDouble() < 0.45
-                ? new Hazard(
+                    2)),
+            RegionEnvironmentCategory.Ruins => TryCreateHazard(
+                0.45,
+                () => new Hazard(
                     "Infestazione di Non Morti",
                     "undead_horde",
                     $"Tra {from.Name} e {to.Name} vagano orde di non morti inquiete nelle rovine crollate.",
-                    4)
-                : null;
-        }
+                    4)),
+            _ => null,
+        };
+    }
 
-        return null;
+    private Hazard? TryCreateHazard(double probability, Func<Hazard> createHazard)
+    {
+        return _random.NextDouble() < probability ? createHazard() : null;
     }
 
     private static bool HasExistingConnection(Location from, Location to)

@@ -48,34 +48,15 @@ public sealed class RegionLocationGenerator
 
     private static (LocationGenerationProfile profile, string key) ResolveProfile(string environmentType)
     {
-        var lowered = environmentType.ToLowerInvariant();
-
-        if (lowered.Contains("foresta"))
+        return RegionEnvironmentClassifier.FromEnvironment(environmentType) switch
         {
-            return (LocationGenerationProfile.Forest, "forest");
-        }
-
-        if (lowered.Contains("deserto") || lowered.Contains("dune"))
-        {
-            return (LocationGenerationProfile.Desert, "desert");
-        }
-
-        if (lowered.Contains("tundra") || lowered.Contains("mont"))
-        {
-            return (LocationGenerationProfile.Tundra, "tundra");
-        }
-
-        if (lowered.Contains("palud") || lowered.Contains("bruma"))
-        {
-            return (LocationGenerationProfile.Swamp, "swamp");
-        }
-
-        if (lowered.Contains("rovine") || lowered.Contains("citt"))
-        {
-            return (LocationGenerationProfile.Ruinscape, "ruin");
-        }
-
-        return (LocationGenerationProfile.Generic, "generic");
+            RegionEnvironmentCategory.Forest => (LocationGenerationProfile.Forest, "forest"),
+            RegionEnvironmentCategory.Desert => (LocationGenerationProfile.Desert, "desert"),
+            RegionEnvironmentCategory.Arctic => (LocationGenerationProfile.Tundra, "tundra"),
+            RegionEnvironmentCategory.Swamp => (LocationGenerationProfile.Swamp, "swamp"),
+            RegionEnvironmentCategory.Ruins => (LocationGenerationProfile.Ruinscape, "ruin"),
+            _ => (LocationGenerationProfile.Generic, "generic"),
+        };
     }
 
     private void CreateSettlements(Region region, LocationGenerationProfile profile, string key)
