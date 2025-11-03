@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Godot;
 using DynamicRPG.Characters;
+using DynamicRPG.Items;
 using DynamicRPG.UI;
 
 namespace DynamicRPG.Systems.Combat;
@@ -19,6 +20,7 @@ public sealed partial class CombatManager : Node
     private const int DefaultGridHeight = 10;
     private const int EmptyTileSourceId = 0;
     private const int ObstacleTileSourceId = 1;
+    private const int DefaultRangedWeaponRange = 5;
 
     private static readonly Vector2I BattleTileSize = new(64, 64);
     private static readonly Color EmptyTileColor = new(0.247f, 0.514f, 0.298f);
@@ -361,61 +363,67 @@ public sealed partial class CombatManager : Node
             return false;
         }
 
-        // 1. Verifica portata e copertura (Prompt 4.11)
-        if (!IsWithinAttackRange(attacker, defender))
+        var weapon = attacker.EquippedWeapon;
+        var isRangedAttack = IsRangedWeapon(weapon);
+
+        if (!IsWithinAttackRange(attacker, defender, weapon, isRangedAttack))
         {
-            if (Players.Contains(attacker))
+            if (attacker.IsPlayer && ReferenceEquals(CurrentCharacter, attacker))
             {
-                LogMessage($"{attacker.Name}: bersaglio fuori portata!");
+                LogMessage("Bersaglio fuori portata!");
             }
+            else
+            {
+                LogMessage($"{attacker.Name} non può colpire {defender.Name}: bersaglio fuori portata.");
+            }
+
             return false;
         }
 
-        // 2. Calcola modificatori copertura (Prompt 4.11)
-        var coverBonus = CalculateCoverBonus(attacker, defender);
-
-        // 3. Tiro per colpire
         var attackRoll = _rng.RandiRange(1, 20);
-        var attackBonus = CalculateAttackBonus(attacker);
+        var attackBonus = CalculateAttackBonus(attacker, weapon, isRangedAttack);
         var totalAttack = attackRoll + attackBonus;
-        var defenderAC = CalculateArmorClass(defender) + coverBonus;
 
-        // 4. Verifica critici
-        var isCritical = attackRoll == 20;
+        var coverBonus = CalculateCoverBonus(attacker, defender);
+        var defenderArmorClass = CalculateArmorClass(defender) + coverBonus;
+
+        var isCriticalHit = attackRoll == 20;
         var isCriticalFailure = attackRoll == 1;
 
         if (isCriticalFailure)
         {
-            LogMessage($"{attacker.Name} attacca {defender.Name} ma fallisce clamorosamente!");
+            LogMessage($"{attacker.Name} attacca {defender.Name} ma fallisce clamorosamente! (Fallimento critico!)");
+            FinalizeAttack(attacker);
             return true;
         }
 
-        if (!isCritical && totalAttack < defenderAC)
+        if (!isCriticalHit && totalAttack < defenderArmorClass)
         {
-            var coverMsg = coverBonus > 0 ? $" (in copertura +{coverBonus})" : "";
-            LogMessage($"{attacker.Name} manca {defender.Name}. ({attackRoll}+{attackBonus}={totalAttack} vs AC {defenderAC}{coverMsg})");
+            LogMessage($"{attacker.Name} attacca {defender.Name} ma manca il colpo.");
+            FinalizeAttack(attacker);
             return true;
         }
 
-        // 5. Calcola e applica danno
-        var damage = CalculateDamage(attacker, defender, isCritical);
-        var wasKilled = defender.TakeDamage(damage);
+        var damage = CalculateDamage(attacker, defender, weapon, isCriticalHit, isRangedAttack);
+        var defenderDefeated = defender.TakeDamage(damage);
 
-        var critText = isCritical ? " (Critico!)" : "";
-        LogMessage($"{attacker.Name} colpisce {defender.Name} per {damage} danni{critText}. HP: {defender.CurrentHealth}/{defender.MaxHealth}");
+        var critSuffix = isCriticalHit ? " (Colpo Critico!)" : string.Empty;
+        LogMessage($"{attacker.Name} colpisce {defender.Name} infliggendo {damage} danni.{critSuffix}");
 
         if (defender.IsPlayer)
         {
             UpdatePlayerStatsDisplay();
         }
 
-        if (wasKilled)
+        if (defenderDefeated)
         {
-            LogMessage($"{defender.Name} è stato sconfitto!");
+            LogMessage($"{defender.Name} è morto.");
         }
 
         RemoveDefeatedCombatants();
         CheckBattleEnd();
+
+        FinalizeAttack(attacker);
         return true;
     }
 
@@ -632,20 +640,14 @@ public sealed partial class CombatManager : Node
         return points;
     }
 
-    private bool IsWithinAttackRange(Character attacker, Character defender)
+    private bool IsWithinAttackRange(Character attacker, Character defender, Item? weapon, bool isRangedAttack)
     {
-        var distance = CalculateDistance(
-            new GridPosition(attacker.PositionX, attacker.PositionY),
-            new GridPosition(defender.PositionX, defender.PositionY));
+        var attackerPos = new GridPosition(attacker.PositionX, attacker.PositionY);
+        var defenderPos = new GridPosition(defender.PositionX, defender.PositionY);
+        var distance = CalculateGridDistance(attackerPos, defenderPos);
+        var weaponRange = GetWeaponRange(weapon, isRangedAttack);
 
-        var weapon = attacker.EquippedWeapon;
-
-        if (weapon?.Type?.Contains("Ranged", StringComparison.OrdinalIgnoreCase) == true)
-        {
-            return distance <= 5;
-        }
-
-        return distance <= 1.5f;
+        return distance <= weaponRange;
     }
 
     private static float CalculateDistance(GridPosition from, GridPosition to)
@@ -655,54 +657,92 @@ public sealed partial class CombatManager : Node
         return Mathf.Sqrt(dx * dx + dy * dy);
     }
 
-    private int CalculateAttackBonus(Character attacker)
+    private int CalculateAttackBonus(Character attacker, Item? weapon, bool isRangedAttack)
     {
-        var weapon = attacker.EquippedWeapon;
-        var isRanged = weapon?.Type?.Contains("Ranged", StringComparison.OrdinalIgnoreCase) == true;
-        var attributeBonus = isRanged ? attacker.Dexterity / 2 : attacker.Strength / 2;
+        var abilityBonus = CalculateAbilityModifier(isRangedAttack ? attacker.Dexterity : attacker.Strength);
         var weaponAccuracy = weapon?.AccuracyBonus ?? 0;
 
-        var skillName = isRanged ? "Archery" : "OneHandedWeapons";
+        var skillName = isRangedAttack ? "Archery" : "OneHandedWeapons";
         var skillBonus = attacker.Skills.TryGetValue(skillName, out var skill) ? skill / 5 : 0;
 
-        return attributeBonus + weaponAccuracy + skillBonus;
+        return abilityBonus + weaponAccuracy + skillBonus;
     }
 
     private int CalculateArmorClass(Character defender)
     {
-        var baseAC = 10;
-        var dexMod = defender.Dexterity / 2;
+        const int baseArmorClass = 10;
+        var dexterityBonus = CalculateAbilityModifier(defender.Dexterity);
         var armorBonus = defender.EquippedArmor?.DefenseBonus ?? 0;
-        return baseAC + dexMod + armorBonus;
+
+        return baseArmorClass + dexterityBonus + armorBonus;
     }
 
-    private int CalculateDamage(Character attacker, Character defender, bool isCritical)
+    private int CalculateDamage(
+        Character attacker,
+        Character defender,
+        Item? weapon,
+        bool isCriticalHit,
+        bool isRangedAttack)
     {
-        var weapon = attacker.EquippedWeapon;
+        int minDamage;
+        int maxDamage;
 
-        int baseDamage;
-        if (weapon?.MinDamage is { } min && weapon.MaxDamage is { } max)
+        if (weapon?.MinDamage is { } weaponMin && weapon.MaxDamage is { } weaponMax)
         {
-            baseDamage = _rng.RandiRange(min, max);
+            minDamage = Math.Min(weaponMin, weaponMax);
+            maxDamage = Math.Max(weaponMin, weaponMax);
         }
         else
         {
-            baseDamage = _rng.RandiRange(1, 3);
+            minDamage = 1;
+            maxDamage = 3;
         }
 
-        var isRanged = weapon?.Type?.Contains("Ranged", StringComparison.OrdinalIgnoreCase) == true;
-        var attributeBonus = isRanged ? attacker.Dexterity / 2 : attacker.Strength / 2;
+        var damageRoll = _rng.RandiRange(minDamage, maxDamage);
 
-        if (isCritical)
+        if (isCriticalHit)
         {
-            baseDamage *= 2;
+            damageRoll *= 2;
         }
 
-        var totalDamage = baseDamage + attributeBonus;
-        var damageReduction = defender.EquippedArmor?.DefenseBonus ?? 0;
-        totalDamage = Math.Max(0, totalDamage - damageReduction);
+        var abilityBonus = CalculateAbilityModifier(isRangedAttack ? attacker.Dexterity : attacker.Strength);
+        var baseDamage = Math.Max(0, damageRoll + abilityBonus);
+        var damageReduction = defender.EquippedArmor?.DamageReduction ?? 0;
 
-        return Math.Max(1, totalDamage);
+        return Math.Max(0, baseDamage - damageReduction);
+    }
+
+    private void FinalizeAttack(Character attacker)
+    {
+        if (!attacker.IsPlayer || !ReferenceEquals(CurrentCharacter, attacker) || !IsCombatActive)
+        {
+            return;
+        }
+
+        EndTurn();
+    }
+
+    private static bool IsRangedWeapon(Item? weapon) =>
+        weapon?.Type?.Contains("Ranged", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static int GetWeaponRange(Item? weapon, bool isRangedAttack)
+    {
+        if (weapon is not null && weapon.Range > 0)
+        {
+            return weapon.Range;
+        }
+
+        return isRangedAttack ? DefaultRangedWeaponRange : 1;
+    }
+
+    private static int CalculateAbilityModifier(int score) =>
+        (int)MathF.Floor((score - 10) / 2f);
+
+    private static int CalculateGridDistance(GridPosition from, GridPosition to)
+    {
+        var dx = Math.Abs(to.X - from.X);
+        var dy = Math.Abs(to.Y - from.Y);
+        return Math.Max(dx, dy);
     }
 
     private void UpdatePlayerStatsDisplay()
@@ -979,13 +1019,15 @@ public sealed partial class CombatManager : Node
             return;
         }
 
-        AwaitingAttackTarget = false;
-        PerformAttack(attacker, target);
+        var attackResolved = PerformAttack(attacker, target);
 
-        if (IsCombatActive)
+        if (!attackResolved)
         {
-            EndTurn();
+            AwaitingAttackTarget = true;
+            return;
         }
+
+        AwaitingAttackTarget = false;
     }
 
     private Character? FindCharacterAt(GridPosition position)

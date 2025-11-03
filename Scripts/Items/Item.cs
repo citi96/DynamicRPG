@@ -56,9 +56,20 @@ public class Item
     public int? AccuracyBonus { get; set; }
 
     /// <summary>
+    /// Gets or sets the maximum range, in tiles, that a weapon can target.
+    /// Defaults to <c>1</c> for melee weapons.
+    /// </summary>
+    public int Range { get; set; } = 1;
+
+    /// <summary>
     /// Gets or sets the defense bonus granted by armor-type items.
     /// </summary>
     public int? DefenseBonus { get; set; }
+
+    /// <summary>
+    /// Gets or sets the amount of flat damage reduction provided by the item when equipped as armor.
+    /// </summary>
+    public int? DamageReduction { get; set; }
 
     /// <summary>
     /// Gets or sets the textual description of the consumable effect.
