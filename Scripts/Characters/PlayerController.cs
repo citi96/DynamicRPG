@@ -1,3 +1,4 @@
+using DynamicRPG;
 using Godot;
 
 #nullable enable
@@ -39,6 +40,13 @@ public partial class PlayerController : CharacterBody2D
 
     public override void _PhysicsProcess(double delta)
     {
+        if (IsMovementLocked())
+        {
+            Velocity = Vector2.Zero;
+            MoveAndSlide();
+            return;
+        }
+
         var inputVector = Vector2.Zero;
 
         inputVector.X = GetAxis("move_left", "move_right");
@@ -127,5 +135,16 @@ public partial class PlayerController : CharacterBody2D
         };
 
         InputMap.ActionAddEvent(actionName, newEvent);
+    }
+
+    private static bool IsMovementLocked()
+    {
+        var game = Game.Instance;
+        if (game?.CombatManager is not { IsCombatActive: true })
+        {
+            return false;
+        }
+
+        return true;
     }
 }
