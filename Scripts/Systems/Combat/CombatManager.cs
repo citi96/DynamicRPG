@@ -145,6 +145,15 @@ public sealed partial class CombatManager : Node
         _activePlayerCharacter = null;
         ActionMenu?.HideMenu();
 
+        if (Players.FirstOrDefault(player => player.CurrentHealth > 0) is { } primaryPlayer)
+        {
+            // Applicazione dimostrativa: il primo giocatore vivo inizia avvelenato per mostrare il ticking a fine turno.
+            if (!primaryPlayer.HasStatus(StatusType.Poisoned))
+            {
+                primaryPlayer.ApplyStatus(StatusType.Poisoned, duration: 3, potency: 2);
+            }
+        }
+
         if (!IsCombatActive)
         {
             LogMessage("Impossibile avviare il combattimento: servono almeno un alleato e un nemico vivi.");
@@ -1035,7 +1044,7 @@ public sealed partial class CombatManager : Node
         return _combatGrid?.GetOccupant(position);
     }
 
-    private static void LogMessage(string message)
+    internal static void LogMessage(string message)
     {
         if (string.IsNullOrWhiteSpace(message))
         {
