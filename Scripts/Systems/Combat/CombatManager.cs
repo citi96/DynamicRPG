@@ -766,7 +766,7 @@ public sealed partial class CombatManager : Node
                 player.MaxMana);
 
             // Aggiorna status effects (Prompt 4.10)
-            hud.UpdateStatusEffects(player.GetStatusEffectsDisplay());
+            hud.UpdateStatusEffects(player.StatusEffects);
         }
     }
 

@@ -395,7 +395,7 @@ public partial class Game : Node2D
         Player.CurrentLocation = CurrentLocation;
 
         HUD?.UpdatePlayerStats(Player.CurrentHealth, Player.MaxHealth, Player.CurrentMana, Player.MaxMana);
-        HUD?.UpdateStatusEffects(Player.GetStatusEffectsDisplay());
+        HUD?.UpdateStatusEffects(Player.StatusEffects);
 
         GD.Print($"Giocatore inizializzato: STR={Player.Strength}, HP={Player.HP}/{Player.MaxHP}, arma equip={Player.EquippedWeapon?.Name}");
     }

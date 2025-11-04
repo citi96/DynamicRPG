@@ -356,12 +356,14 @@ public partial class Character : Node2D
                 ReportStatusMessage($"La durata di {type} su {Name} è estesa a {existing.RemainingDuration} turni.");
             }
 
+            NotifyStatusEffectsChanged();
             return;
         }
 
         var effect = new StatusEffect(type, duration, potency);
         StatusEffects.Add(effect);
         ReportStatusMessage($"{Name} è ora affetto da {type} per {duration} turni.");
+        NotifyStatusEffectsChanged();
     }
 
     /// <summary>
@@ -373,6 +375,11 @@ public partial class Character : Node2D
         if (removed > 0 && showLog)
         {
             ReportStatusMessage($"{type} rimosso da {Name}.");
+        }
+
+        if (removed > 0)
+        {
+            NotifyStatusEffectsChanged();
         }
 
         return removed > 0;
@@ -411,6 +418,7 @@ public partial class Character : Node2D
             StatusEffects.Remove(prone); // Rialzarsi rimuove lo stato, ma consuma parte del turno.
             effectiveMovement = Math.Max(1, effectiveMovement / 2);
             ReportStatusMessage($"{Name} si rialza e ha movimento ridotto per questo turno.");
+            NotifyStatusEffectsChanged();
         }
 
         if (FindStatus(StatusType.Slowed) is not null)
@@ -442,6 +450,8 @@ public partial class Character : Node2D
 
         var effectsToRemove = new List<StatusEffect>();
 
+        var statusChanged = false;
+
         foreach (var effect in StatusEffects)
         {
             switch (effect.Type)
@@ -459,6 +469,8 @@ public partial class Character : Node2D
                     break;
             }
 
+            statusChanged = true;
+
             if (effect.DecrementDuration())
             {
                 effectsToRemove.Add(effect);
@@ -469,6 +481,11 @@ public partial class Character : Node2D
         {
             StatusEffects.Remove(effect);
             ReportStatusMessage($"{effect.Type} su {Name} è svanito.");
+        }
+
+        if (statusChanged)
+        {
+            NotifyStatusEffectsChanged();
         }
     }
 
@@ -773,6 +790,19 @@ public partial class Character : Node2D
         if (Game.Instance?.HUD is { } hud)
         {
             hud.UpdatePlayerStats(CurrentHealth, MaxHealth, CurrentMana, MaxMana);
+        }
+    }
+
+    private void NotifyStatusEffectsChanged()
+    {
+        if (!IsPlayer)
+        {
+            return;
+        }
+
+        if (Game.Instance?.HUD is { } hud)
+        {
+            hud.UpdateStatusEffects(StatusEffects);
         }
     }
 
