@@ -15,6 +15,7 @@ GrassColor = Color(0.188235, 0.352941, 0.219608, 1)
 PathColor = Color(0.47451, 0.34902, 0.203922, 1)
 WaterColor = Color(0.137255, 0.337255, 0.521569, 1)
 StoneColor = Color(0.396078, 0.396078, 0.396078, 1)
+TileSize = 64
 
 [node name="Regions" type="Node" parent="."]
 
@@ -36,20 +37,53 @@ y_sort_enabled = true
 
 [node name="InfoLayer" type="CanvasLayer" parent="."]
 
-[node name="Info" type="Label" parent="InfoLayer"]
+[node name="InfoPanel" type="PanelContainer" parent="InfoLayer"]
+self_modulate = Color(1, 1, 1, 0.92)
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 336.0
+offset_bottom = 176.0
+
+[node name="InfoContainer" type="VBoxContainer" parent="InfoLayer/InfoPanel"]
+layout_mode = 2
 offset_left = 12.0
 offset_top = 12.0
-offset_right = 312.0
-offset_bottom = 200.0
+offset_right = -12.0
+offset_bottom = -12.0
+
+[node name="InfoTitle" type="Label" parent="InfoLayer/InfoPanel/InfoContainer"]
+layout_mode = 2
+text = "Esplorazione"
+
+[node name="Info" type="Label" parent="InfoLayer/InfoPanel/InfoContainer"]
+layout_mode = 2
 text = "Scena di esplorazione"
 autowrap_mode = 2
 
-[node name="Help" type="Label" parent="InfoLayer"]
+[node name="HelpPanel" type="PanelContainer" parent="InfoLayer"]
+self_modulate = Color(1, 1, 1, 0.92)
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -320.0
+offset_left = -332.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = 160.0
+
+[node name="HelpContainer" type="VBoxContainer" parent="InfoLayer/HelpPanel"]
+layout_mode = 2
+offset_left = 12.0
 offset_top = 12.0
 offset_right = -12.0
-offset_bottom = 60.0
+offset_bottom = -12.0
+
+[node name="HelpTitle" type="Label" parent="InfoLayer/HelpPanel/HelpContainer"]
+layout_mode = 2
+text = "Comandi"
+horizontal_alignment = 2
+
+[node name="Help" type="Label" parent="InfoLayer/HelpPanel/HelpContainer"]
+layout_mode = 2
+text = ""
+autowrap_mode = 2
 horizontal_alignment = 2

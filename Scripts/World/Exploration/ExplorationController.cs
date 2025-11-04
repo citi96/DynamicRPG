@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using DynamicRPG.Characters;
+using DynamicRPG.UI;
 using Godot;
 
 #nullable enable
@@ -19,7 +20,9 @@ public partial class ExplorationController : Node2D
         Stone,
     }
 
-    private const int DefaultTileSize = 32;
+    private const int DefaultTileSize = 64;
+    private const string TerrainTexturePath = "res://assets/tiles/terrain_tiles.png";
+    private const string TreeTexturePath = "res://assets/foliage/tree.png";
 
     private static readonly Color DefaultGrassColor = new(0.188f, 0.353f, 0.220f);
     private static readonly Color DefaultPathColor = new(0.474f, 0.349f, 0.204f);
@@ -28,12 +31,15 @@ public partial class ExplorationController : Node2D
 
     private readonly List<Vector2I> _grassCells = new();
     private readonly RandomNumberGenerator _rng = new();
-    private readonly Dictionary<TerrainTile, int> _tileSources = new();
+    private readonly Dictionary<TerrainTile, TileSourceReference> _tileSources = new();
 
     private Node2D? _worldRoot;
     private Node2D? _enemyContainer;
     private TerrainTile[,]? _terrainGrid;
     private Texture2D? _treeTexture;
+    private Texture2D? _terrainTexture;
+
+    private readonly record struct TileSourceReference(int SourceId, Vector2I AtlasCoords);
 
     [Export]
     public Label? LocationInfoLabel { get; set; }
@@ -99,8 +105,11 @@ public partial class ExplorationController : Node2D
         _worldRoot = GetNodeOrNull<Node2D>("World");
 
         Player ??= GetNodeOrNull<PlayerController>("World/Player");
-        LocationInfoLabel ??= GetNodeOrNull<Label>("InfoLayer/Info");
-        HelpLabel ??= GetNodeOrNull<Label>("InfoLayer/Help");
+        LocationInfoLabel ??= GetNodeOrNull<Label>("InfoLayer/InfoPanel/Info")
+            ?? GetNodeOrNull<Label>("InfoLayer/Info");
+        HelpLabel ??= GetNodeOrNull<Label>("InfoLayer/HelpPanel/Help")
+            ?? GetNodeOrNull<Label>("InfoLayer/Help");
+        ApplyOverlayTheme();
         PlayerSpawn ??= GetNodeOrNull<Marker2D>("World/PlayerSpawn");
         TerrainTileMap ??= _worldRoot?.GetNodeOrNull<TileMapLayer>("Terrain");
         FoliageContainer ??= _worldRoot?.GetNodeOrNull<Node2D>("Foliage");
@@ -189,8 +198,8 @@ public partial class ExplorationController : Node2D
                     _grassCells.Add(cell);
                 }
 
-                var sourceId = _tileSources[tileType];
-                TerrainTileMap.SetCell(cell, sourceId, Vector2I.Zero, 0);
+                var source = _tileSources[tileType];
+                TerrainTileMap.SetCell(cell, source.SourceId, source.AtlasCoords, 0);
             }
         }
 
@@ -205,6 +214,12 @@ public partial class ExplorationController : Node2D
         };
 
         _tileSources.Clear();
+
+        if (TryCreateTexturedTileSet(tileSet))
+        {
+            return tileSet;
+        }
+
         _tileSources[TerrainTile.Grass] = CreateColorTile(tileSet, GrassColor);
         _tileSources[TerrainTile.Path] = CreateColorTile(tileSet, PathColor);
         _tileSources[TerrainTile.Water] = CreateColorTile(tileSet, WaterColor);
@@ -213,7 +228,50 @@ public partial class ExplorationController : Node2D
         return tileSet;
     }
 
-    private static int CreateColorTile(TileSet tileSet, Color color)
+    private bool TryCreateTexturedTileSet(TileSet tileSet)
+    {
+        var texture = LoadTerrainTexture();
+        if (texture is null)
+        {
+            return false;
+        }
+
+        var tileWidth = texture.GetWidth() / 4;
+        var tileHeight = texture.GetHeight();
+        if (tileWidth <= 0 || tileHeight <= 0)
+        {
+            return false;
+        }
+
+        var atlasSource = new TileSetAtlasSource
+        {
+            Texture = texture,
+            TextureRegionSize = new Vector2I(tileWidth, tileHeight),
+        };
+
+        tileSet.TileSize = atlasSource.TextureRegionSize;
+        TileSize = tileSet.TileSize.X;
+
+        var sourceId = tileSet.AddSource(atlasSource);
+
+        var tileMap = new Dictionary<TerrainTile, Vector2I>
+        {
+            [TerrainTile.Grass] = Vector2I.Zero,
+            [TerrainTile.Path] = new Vector2I(1, 0),
+            [TerrainTile.Water] = new Vector2I(2, 0),
+            [TerrainTile.Stone] = new Vector2I(3, 0),
+        };
+
+        foreach (var (tile, coords) in tileMap)
+        {
+            atlasSource.CreateTile(coords);
+            _tileSources[tile] = new TileSourceReference(sourceId, coords);
+        }
+
+        return true;
+    }
+
+    private TileSourceReference CreateColorTile(TileSet tileSet, Color color)
     {
         var image = Image.CreateEmpty(tileSet.TileSize.X, tileSet.TileSize.Y, false, Image.Format.Rgba8);
         image.Fill(color);
@@ -226,9 +284,10 @@ public partial class ExplorationController : Node2D
         };
 
         var sourceId = tileSet.AddSource(atlasSource);
-        atlasSource.CreateTile(Vector2I.Zero);
+        var coords = Vector2I.Zero;
+        atlasSource.CreateTile(coords);
 
-        return sourceId;
+        return new TileSourceReference(sourceId, coords);
     }
 
     private FastNoiseLite CreateTerrainNoise() => new()
@@ -368,12 +427,12 @@ public partial class ExplorationController : Node2D
             {
                 Texture = texture,
                 Position = position,
-                Scale = new Vector2(0.18f, 0.24f),
+                Scale = new Vector2(0.26f, 0.26f),
                 Modulate = new Color(
                     Mathf.Clamp(GrassColor.R - _rng.RandfRange(0f, 0.12f), 0f, 1f),
                     Mathf.Clamp(GrassColor.G + _rng.RandfRange(0.05f, 0.25f), 0f, 1f),
                     Mathf.Clamp(GrassColor.B - _rng.RandfRange(0f, 0.08f), 0f, 1f),
-                    0.95f),
+                    0.98f),
             };
 
             FoliageContainer.AddChild(sprite);
@@ -387,15 +446,39 @@ public partial class ExplorationController : Node2D
             return _treeTexture;
         }
 
-        const string fallbackTexturePath = "res://icon.svg";
-        if (!ResourceLoader.Exists(fallbackTexturePath))
+        _treeTexture = LoadTextureFromFile(TreeTexturePath);
+        if (_treeTexture is null)
         {
-            GD.PushWarning("Texture per gli alberi non trovata, nessun fogliame generato.");
+            GD.PushWarning($"Texture per gli alberi non trovata in {TreeTexturePath}. Inserisci tree.png seguendo le istruzioni nel file tree.txt.");
+        }
+
+        return _treeTexture;
+    }
+
+    private Texture2D? LoadTerrainTexture()
+    {
+        if (_terrainTexture is not null)
+        {
+            return _terrainTexture;
+        }
+
+        _terrainTexture = LoadTextureFromFile(TerrainTexturePath);
+        if (_terrainTexture is null)
+        {
+            GD.PushWarning($"Texture del terreno non trovata in {TerrainTexturePath}. Aggiungi terrain_tiles.png come indicato in terrain_tiles.txt per attivare il tileset.");
+        }
+
+        return _terrainTexture;
+    }
+
+    private static Texture2D? LoadTextureFromFile(string path)
+    {
+        if (!ResourceLoader.Exists(path, "Texture2D"))
+        {
             return null;
         }
 
-        _treeTexture = GD.Load<Texture2D>(fallbackTexturePath);
-        return _treeTexture;
+        return ResourceLoader.Load<Texture2D>(path);
     }
 
     private void SpawnEnemyEncounters()
@@ -618,5 +701,18 @@ public partial class ExplorationController : Node2D
         }
 
         HelpLabel.Text = "WASD o frecce per muoverti. Avvicinati alle sfere rosse per avviare un incontro.";
+    }
+
+    private void ApplyOverlayTheme()
+    {
+        if (LocationInfoLabel is not null)
+        {
+            ThemeHelper.ApplySharedThemeHierarchy(LocationInfoLabel);
+        }
+
+        if (HelpLabel is not null)
+        {
+            ThemeHelper.ApplySharedThemeHierarchy(HelpLabel);
+        }
     }
 }

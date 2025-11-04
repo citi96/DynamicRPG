@@ -20,6 +20,8 @@ public sealed partial class ActionMenu : Panel
         _attackButton = GetNodeOrNull<Button>("VBoxContainer/AttackButton");
         _endTurnButton = GetNodeOrNull<Button>("VBoxContainer/EndTurnButton");
 
+        ThemeHelper.ApplySharedTheme(this);
+        ApplyButtonStyling();
         HideMenu();
         ConnectButtonSignals();
     }
@@ -42,6 +44,33 @@ public sealed partial class ActionMenu : Panel
         }
     }
 
+    private void ApplyButtonStyling()
+    {
+        if (_moveButton is not null)
+        {
+            _moveButton.Icon = ThemeHelper.GetMoveIcon();
+            _moveButton.IconAlignment = HorizontalAlignment.Left;
+            _moveButton.ExpandIcon = true;
+            _moveButton.TooltipText = "Sposta l'eroe verso una nuova posizione.";
+        }
+
+        if (_attackButton is not null)
+        {
+            _attackButton.Icon = ThemeHelper.GetAttackIcon();
+            _attackButton.IconAlignment = HorizontalAlignment.Left;
+            _attackButton.ExpandIcon = true;
+            _attackButton.TooltipText = "Attacca un bersaglio nel raggio consentito.";
+        }
+
+        if (_endTurnButton is not null)
+        {
+            _endTurnButton.Icon = ThemeHelper.GetEndTurnIcon();
+            _endTurnButton.IconAlignment = HorizontalAlignment.Left;
+            _endTurnButton.ExpandIcon = true;
+            _endTurnButton.TooltipText = "Chiudi il turno corrente e passa ai nemici.";
+        }
+    }
+
     /// <summary>
     /// Shows the action menu and enables interaction with the buttons.
     /// </summary>
@@ -57,7 +86,7 @@ public sealed partial class ActionMenu : Panel
     public void HideMenu()
     {
         Visible = false;
-        SetMenuEnabled(true);
+        SetMenuEnabled(false);
     }
 
     /// <summary>
@@ -66,7 +95,7 @@ public sealed partial class ActionMenu : Panel
     /// <param name="enabled">Whether the menu should be interactable.</param>
     public void SetMenuEnabled(bool enabled)
     {
-        MouseFilter = enabled ? MouseFilterEnum.Pass : MouseFilterEnum.Ignore;
+        MouseFilter = enabled ? MouseFilterEnum.Stop : MouseFilterEnum.Ignore;
 
         if (_moveButton is not null)
         {

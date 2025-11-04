@@ -24,6 +24,8 @@ public sealed partial class HUD : Control
 
     public override void _Ready()
     {
+        ThemeHelper.ApplySharedTheme(this);
+
         _combatLog = GetNodeOrNull<RichTextLabel>("LogPanel/CombatLog");
         ActionMenu = GetNodeOrNull<ActionMenu>("ActionPanel");
 
@@ -34,6 +36,7 @@ public sealed partial class HUD : Control
         _turnLabel = _turnPanel?.GetNodeOrNull<Label>("TurnLabel");
         _statusEffectsLabel = GetNodeOrNull<Label>("StatusPanel/StatsContainer/StatusEffectsLabel");
 
+        ConfigurePanels();
         ClearTurnIndicator();
     }
 
@@ -139,6 +142,42 @@ public sealed partial class HUD : Control
         }
 
         _statusEffectsLabel.Text = FormatStatusEffectsText(statusEffects);
+    }
+
+    private void ConfigurePanels()
+    {
+        if (_combatLog is not null)
+        {
+            _combatLog.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+            _combatLog.AddThemeConstantOverride("line_separation", 6);
+            _combatLog.BbcodeEnabled = true;
+            _combatLog.ScrollFollowing = true;
+        }
+
+        if (_turnPanel is not null)
+        {
+            _turnPanel.Visible = false;
+        }
+
+        if (_turnLabel is not null)
+        {
+            _turnLabel.AddThemeFontSizeOverride("font_size", 20);
+        }
+
+        if (_hpLabel is not null)
+        {
+            _hpLabel.Text = "HP: --";
+        }
+
+        if (_manaLabel is not null)
+        {
+            _manaLabel.Text = "Mana: --";
+        }
+
+        if (_statusEffectsLabel is not null)
+        {
+            _statusEffectsLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        }
     }
 
     private static string FormatStatusEffectsText(IEnumerable<StatusEffect>? statusEffects)
