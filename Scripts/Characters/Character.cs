@@ -120,6 +120,11 @@ public partial class Character : Node2D
     public bool IsDead { get; private set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether the character has spent their reaction during the current round.
+    /// </summary>
+    public bool HasUsedReaction { get; set; }
+
+    /// <summary>
     /// Gets the current health points using the common HP naming convention.
     /// </summary>
     public int HP => CurrentHealth;
@@ -550,6 +555,14 @@ public partial class Character : Node2D
     public void ResetMovementForNewTurn()
     {
         RemainingMovement = CurrentMovementAllowance;
+    }
+
+    /// <summary>
+    /// Clears the reaction usage flag so the character can react again in the new round.
+    /// </summary>
+    public void ResetReaction()
+    {
+        HasUsedReaction = false;
     }
 
     /// <summary>

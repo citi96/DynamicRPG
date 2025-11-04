@@ -30,8 +30,6 @@ public sealed partial class CombatManager : Node
 
     private readonly RandomNumberGenerator _rng = new();
     private readonly GridPathfinder _pathfinder = new();
-    private readonly Dictionary<Character, bool> _reactionsUsed = new();
-
     private CombatGrid? _combatGrid;
     private TileMapLayer? _battleTileLayer;
     private TileSet? _battleTileSet;
@@ -136,7 +134,6 @@ public sealed partial class CombatManager : Node
         Enemies.AddRange(enemies.Where(character => character is not null));
 
         TurnOrder.Clear();
-        _reactionsUsed.Clear();
         RoundNumber = 1;
         CurrentTurnIndex = 0;
         IsCombatActive = Players.Any(c => c.CurrentHealth > 0) &&
@@ -465,12 +462,6 @@ public sealed partial class CombatManager : Node
             return false;
         }
 
-        // Verifica opportunità di attacco (Prompt 4.13)
-        if (!ProcessOpportunityAttacks(character))
-        {
-            return false; // Personaggio ucciso da AoO
-        }
-
         var path = GetPath(character, targetX, targetY);
 
         if (path is null || path.Count <= 1)
@@ -499,6 +490,17 @@ public sealed partial class CombatManager : Node
             if (movementSpent + tileCost > movementBudget)
             {
                 break;
+            }
+
+            if (!_combatGrid.CanOccupy(nextPosition, character))
+            {
+                LogMessage($"Percorso bloccato in {nextPosition}.");
+                break;
+            }
+
+            if (!ProcessOpportunityAttacks(character))
+            {
+                return false;
             }
 
             if (!_combatGrid.TryTransitionOccupant(currentPosition, nextPosition, character))
@@ -543,9 +545,8 @@ public sealed partial class CombatManager : Node
 
         var moverPos = new GridPosition(mover.PositionX, mover.PositionY);
         var enemies = mover.IsPlayer ? Enemies : Players;
-        var adjacentEnemies = new List<Character>();
+        // TODO: implement Disengage action to avoid AoO.
 
-        // Trova nemici adiacenti
         foreach (var enemy in enemies)
         {
             if (enemy.CurrentHealth <= 0)
@@ -553,33 +554,28 @@ public sealed partial class CombatManager : Node
                 continue;
             }
 
-            var enemyPos = new GridPosition(enemy.PositionX, enemy.PositionY);
-            var distance = CalculateDistance(moverPos, enemyPos);
-
-            if (distance <= 1.5f) // Adiacente (inclusi diagonali)
+            if (enemy.HasUsedReaction)
             {
-                adjacentEnemies.Add(enemy);
+                continue;
             }
-        }
 
-        // Esegui attacchi di opportunità
-        foreach (var enemy in adjacentEnemies)
-        {
-            if (_reactionsUsed.TryGetValue(enemy, out var used) && used)
+            if (Math.Abs(enemy.PositionX - moverPos.X) > 1 || Math.Abs(enemy.PositionY - moverPos.Y) > 1)
             {
-                continue; // Questo nemico ha già usato la reazione
+                continue;
             }
 
             LogMessage($"{enemy.Name} effettua un attacco di opportunità su {mover.Name}!");
-            _reactionsUsed[enemy] = true;
+            enemy.HasUsedReaction = true;
 
             PerformAttack(enemy, mover);
 
-            if (mover.CurrentHealth <= 0)
+            if (mover.CurrentHealth > 0)
             {
-                LogMessage($"{mover.Name} viene abbattuto durante il movimento!");
-                return false; // Movimento interrotto
+                continue;
             }
+
+            LogMessage($"{mover.Name} viene ucciso mentre tenta di ritirarsi!");
+            return false;
         }
 
         return true;
@@ -1037,7 +1033,6 @@ public sealed partial class CombatManager : Node
         Players.Clear();
         Enemies.Clear();
         TurnOrder.Clear();
-        _reactionsUsed.Clear();
         CurrentTurnIndex = 0;
         RoundNumber = 0;
         IsCombatActive = false;
@@ -1074,8 +1069,10 @@ public sealed partial class CombatManager : Node
     {
         ResetMovementAllowancesForParticipants();
 
-        // Reset reactions (Prompt 4.13)
-        _reactionsUsed.Clear();
+        foreach (var combatant in Players.Concat(Enemies))
+        {
+            combatant.ResetReaction();
+        }
 
         LogMessage($"Round {RoundNumber} inizia!");
     }
