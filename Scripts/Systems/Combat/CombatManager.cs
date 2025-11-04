@@ -652,17 +652,18 @@ public sealed partial class CombatManager : Node
 
             hasLightCover = true;
 
+            var distanceToDefender = CalculateGridDistance(point, defenderPos);
+
             // +5 AC when an obstacle is adjacent to the defender (three-quarter cover).
-            if (CalculateGridDistance(point, defenderPos) <= 1)
+            if (distanceToDefender <= 1)
             {
                 hasHeavyCover = true;
+                continue;
             }
 
-            // The line is considered fully blocked when the obstacle sits next to the attacker.
-            if (CalculateGridDistance(point, attackerPos) <= 1)
-            {
-                lineBlocked = true;
-            }
+            // Any obstacle outside the defender's immediate space blocks the line outright.
+            lineBlocked = true;
+            break;
         }
 
         if (lineBlocked)
