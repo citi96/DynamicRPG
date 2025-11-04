@@ -20,11 +20,13 @@ public sealed partial class CombatManager : Node
     private const int DefaultGridHeight = 10;
     private const int EmptyTileSourceId = 0;
     private const int ObstacleTileSourceId = 1;
+    private const int DifficultTileSourceId = 2;
     private const int DefaultRangedWeaponRange = 5;
 
     private static readonly Vector2I BattleTileSize = new(64, 64);
     private static readonly Color EmptyTileColor = new(0.247f, 0.514f, 0.298f);
     private static readonly Color ObstacleTileColor = new(0.745f, 0.224f, 0.224f);
+    private static readonly Color DifficultTileColor = new(0.569f, 0.482f, 0.235f);
 
     private readonly RandomNumberGenerator _rng = new();
     private readonly GridPathfinder _pathfinder = new();
@@ -389,11 +391,24 @@ public sealed partial class CombatManager : Node
             return false;
         }
 
+        var coverInfo = isRangedAttack ? EvaluateCover(attacker, defender) : CoverInfo.None;
+
+        if (isRangedAttack && coverInfo.BlocksLineOfSight)
+        {
+            LogMessage("Linea di vista ostruita: attacco impossibile.");
+            return false;
+        }
+
+        if (isRangedAttack && coverInfo.GrantsCover)
+        {
+            LogMessage($"Il bersaglio è in copertura: attacco penalizzato (+{coverInfo.ArmorClassBonus} CA).");
+        }
+
         var attackRoll = _rng.RandiRange(1, 20);
         var attackBonus = CalculateAttackBonus(attacker, weapon, isRangedAttack);
         var totalAttack = attackRoll + attackBonus;
 
-        var coverBonus = CalculateCoverBonus(attacker, defender);
+        var coverBonus = isRangedAttack ? coverInfo.ArmorClassBonus : 0;
         var defenderArmorClass = CalculateArmorClass(defender) + coverBonus;
 
         var isCriticalHit = attackRoll == 20;
@@ -464,20 +479,27 @@ public sealed partial class CombatManager : Node
             return false;
         }
 
-        var stepsAvailable = Math.Min(character.RemainingMovement, path.Count - 1);
-
-        if (stepsAvailable <= 0)
+        if (character.RemainingMovement <= 0)
         {
             LogMessage($"{character.Name} non ha movimento residuo.");
             return false;
         }
 
-        var stepsTaken = 0;
+        var movementBudget = character.RemainingMovement;
+        var movementSpent = 0;
         var currentPosition = new GridPosition(character.PositionX, character.PositionY);
+        var moved = false;
 
-        for (var i = 1; i < path.Count && stepsTaken < stepsAvailable; i++)
+        for (var i = 1; i < path.Count; i++)
         {
             var nextPosition = path[i];
+
+            var tileCost = _combatGrid.GetMovementCost(nextPosition);
+
+            if (movementSpent + tileCost > movementBudget)
+            {
+                break;
+            }
 
             if (!_combatGrid.TryTransitionOccupant(currentPosition, nextPosition, character))
             {
@@ -486,18 +508,25 @@ public sealed partial class CombatManager : Node
             }
 
             character.SetPosition(nextPosition.X, nextPosition.Y);
-            stepsTaken++;
+            movementSpent += tileCost;
             currentPosition = nextPosition;
+            moved = true;
+
+            if (tileCost > 1)
+            {
+                LogMessage($"Il terreno difficile rallenta {character.Name}.");
+            }
+
             LogMessage($"{character.Name} → {currentPosition}");
         }
 
-        if (stepsTaken <= 0)
+        if (!moved)
         {
             return false;
         }
 
-        character.ConsumeMovement(stepsTaken);
-        LogMessage($"{character.Name} termina movimento. Passi: {stepsTaken}, residuo: {character.RemainingMovement}");
+        character.ConsumeMovement(movementSpent);
+        LogMessage($"{character.Name} termina movimento. Punti spesi: {movementSpent}, residuo: {character.RemainingMovement}");
 
         return currentPosition.X == targetX && currentPosition.Y == targetY;
     }
@@ -556,23 +585,53 @@ public sealed partial class CombatManager : Node
         return true;
     }
 
+    private enum CoverType
+    {
+        None,
+        Half,
+        ThreeQuarters,
+        Blocked,
+    }
+
+    private readonly record struct CoverInfo(CoverType Type)
+    {
+        public static CoverInfo None => new(CoverType.None);
+
+        public bool GrantsCover => Type is CoverType.Half or CoverType.ThreeQuarters;
+
+        public bool BlocksLineOfSight => Type == CoverType.Blocked;
+
+        public int ArmorClassBonus => Type switch
+        {
+            CoverType.Half => 2,
+            CoverType.ThreeQuarters => 5,
+            _ => 0,
+        };
+    }
+
     /// <summary>
-    /// Calcola bonus copertura (Prompt 4.11).
+    /// Determines whether the defender benefits from cover relative to the attacker.
     /// </summary>
-    private int CalculateCoverBonus(Character attacker, Character defender)
+    private bool HasCover(Character attacker, Character defender) =>
+        EvaluateCover(attacker, defender).GrantsCover;
+
+    /// <summary>
+    /// Evaluates cover state between two combatants using a Bresenham line trace.
+    /// </summary>
+    private CoverInfo EvaluateCover(Character attacker, Character defender)
     {
         if (_combatGrid is null)
         {
-            return 0;
+            return CoverInfo.None;
         }
 
         var attackerPos = new GridPosition(attacker.PositionX, attacker.PositionY);
         var defenderPos = new GridPosition(defender.PositionX, defender.PositionY);
 
-        // Usa Bresenham per tracciare linea
         var linePoints = GetLineOfSight(attackerPos, defenderPos);
-        var obstaclesNearTarget = 0;
-        var totalObstacles = 0;
+        var hasLightCover = false;
+        var hasHeavyCover = false;
+        var lineBlocked = false;
 
         foreach (var point in linePoints)
         {
@@ -581,30 +640,48 @@ public sealed partial class CombatManager : Node
                 continue;
             }
 
-            if (_combatGrid.GetTile(point) == TileType.Obstacle)
+            if (!_combatGrid.IsWithinBounds(point))
             {
-                totalObstacles++;
-                var distToTarget = CalculateDistance(point, defenderPos);
-                if (distToTarget <= 1.5f)
-                {
-                    obstaclesNearTarget++;
-                }
+                continue;
             }
+
+            if (_combatGrid.GetTile(point) != TileType.Obstacle)
+            {
+                continue;
+            }
+
+            hasLightCover = true;
+
+            var distanceToDefender = CalculateGridDistance(point, defenderPos);
+
+            // +5 AC when an obstacle is adjacent to the defender (three-quarter cover).
+            if (distanceToDefender <= 1)
+            {
+                hasHeavyCover = true;
+                continue;
+            }
+
+            // Any obstacle outside the defender's immediate space blocks the line outright.
+            lineBlocked = true;
+            break;
         }
 
-        // Copertura pesante: ostacolo adiacente al target
-        if (obstaclesNearTarget > 0)
+        if (lineBlocked)
         {
-            return 5; // 3/4 cover
+            return new CoverInfo(CoverType.Blocked);
         }
 
-        // Copertura leggera: ostacoli sulla linea
-        if (totalObstacles > 0)
+        if (hasHeavyCover)
         {
-            return 2; // 1/2 cover
+            return new CoverInfo(CoverType.ThreeQuarters);
         }
 
-        return 0;
+        if (hasLightCover)
+        {
+            return new CoverInfo(CoverType.Half);
+        }
+
+        return CoverInfo.None;
     }
 
     /// <summary>
@@ -808,7 +885,103 @@ public sealed partial class CombatManager : Node
             return;
         }
 
-        PerformAttack(enemy, target);
+        var attackResolved = PerformAttack(enemy, target);
+
+        if (attackResolved)
+        {
+            return;
+        }
+
+        if (!TryAdvanceTowardsTarget(enemy, target))
+        {
+            LogMessage($"{enemy.Name} non riesce ad avvicinarsi a {target.Name}.");
+        }
+    }
+
+    private bool TryAdvanceTowardsTarget(Character mover, Character target)
+    {
+        if (_combatGrid is null || mover.RemainingMovement <= 0)
+        {
+            return false;
+        }
+
+        var moverStart = new GridPosition(mover.PositionX, mover.PositionY);
+        var targetPos = new GridPosition(target.PositionX, target.PositionY);
+
+        var candidatePositions = new List<GridPosition>();
+        var directions = new[]
+        {
+            new GridPosition(1, 0),
+            new GridPosition(-1, 0),
+            new GridPosition(0, 1),
+            new GridPosition(0, -1),
+        };
+
+        foreach (var direction in directions)
+        {
+            var neighbor = targetPos.Offset(direction.X, direction.Y);
+
+            if (!_combatGrid.IsWithinBounds(neighbor) || !_combatGrid.CanOccupy(neighbor, mover))
+            {
+                continue;
+            }
+
+            candidatePositions.Add(neighbor);
+        }
+
+        if (candidatePositions.Count == 0)
+        {
+            var stepX = Math.Sign(targetPos.X - moverStart.X);
+            var stepY = Math.Sign(targetPos.Y - moverStart.Y);
+
+            if (stepX != 0)
+            {
+                var forward = moverStart.Offset(stepX, 0);
+                if (_combatGrid.IsWithinBounds(forward) && _combatGrid.CanOccupy(forward, mover))
+                {
+                    candidatePositions.Add(forward);
+                }
+            }
+
+            if (stepY != 0)
+            {
+                var vertical = moverStart.Offset(0, stepY);
+                if (_combatGrid.IsWithinBounds(vertical) && _combatGrid.CanOccupy(vertical, mover))
+                {
+                    candidatePositions.Add(vertical);
+                }
+            }
+        }
+
+        if (candidatePositions.Count == 0)
+        {
+            return false;
+        }
+
+        candidatePositions.Sort((a, b) =>
+            CalculateGridDistance(moverStart, a).CompareTo(CalculateGridDistance(moverStart, b)));
+
+        foreach (var candidate in candidatePositions)
+        {
+            if (!CanMoveTo(mover, candidate.X, candidate.Y))
+            {
+                continue;
+            }
+
+            var previousPosition = new GridPosition(mover.PositionX, mover.PositionY);
+            var previousMovement = mover.RemainingMovement;
+
+            MoveCharacter(mover, candidate.X, candidate.Y);
+
+            if (mover.RemainingMovement < previousMovement ||
+                mover.PositionX != previousPosition.X ||
+                mover.PositionY != previousPosition.Y)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void RemoveDefeatedCombatants()
@@ -1081,6 +1254,8 @@ public sealed partial class CombatManager : Node
 
         grid.SetTile(new GridPosition(4, 5), TileType.Obstacle);
         grid.SetTile(new GridPosition(6, 7), TileType.Obstacle);
+        grid.SetTile(new GridPosition(5, 5), TileType.Difficult);
+        grid.SetTile(new GridPosition(5, 6), TileType.Difficult);
 
         _combatGrid = grid;
         LogMessage($"Griglia di combattimento inizializzata: {DefaultGridWidth}x{DefaultGridHeight}.");
@@ -1190,6 +1365,11 @@ public sealed partial class CombatManager : Node
                 _battleTileSet.AddSource(CreateSolidTileSource(ObstacleTileColor), ObstacleTileSourceId);
             }
 
+            if (!_battleTileSet.HasSource(DifficultTileSourceId))
+            {
+                _battleTileSet.AddSource(CreateSolidTileSource(DifficultTileColor), DifficultTileSourceId);
+            }
+
             _battleTileSet.TileSize = BattleTileSize;
         }
     }
@@ -1203,6 +1383,7 @@ public sealed partial class CombatManager : Node
 
         tileSet.AddSource(CreateSolidTileSource(EmptyTileColor), EmptyTileSourceId);
         tileSet.AddSource(CreateSolidTileSource(ObstacleTileColor), ObstacleTileSourceId);
+        tileSet.AddSource(CreateSolidTileSource(DifficultTileColor), DifficultTileSourceId);
 
         return tileSet;
     }
@@ -1243,7 +1424,12 @@ public sealed partial class CombatManager : Node
             for (var y = 0; y < _combatGrid.Height; y++)
             {
                 var tileType = _combatGrid.GetTile(new GridPosition(x, y));
-                var sourceId = tileType == TileType.Obstacle ? ObstacleTileSourceId : EmptyTileSourceId;
+                var sourceId = tileType switch
+                {
+                    TileType.Obstacle => ObstacleTileSourceId,
+                    TileType.Difficult => DifficultTileSourceId,
+                    _ => EmptyTileSourceId,
+                };
                 _battleTileLayer.SetCell(new Vector2I(x, y), sourceId, Vector2I.Zero, 0);
             }
         }
