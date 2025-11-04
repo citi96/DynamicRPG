@@ -45,7 +45,7 @@ text = "Mana: 0/0"
 
 [node name="StatusEffectsLabel" type="Label" parent="StatusPanel/StatsContainer"]
 layout_mode = 2
-text = "Effetti: Nessuno"
+text = "Nessun effetto"
 
 [node name="ActionPanel" type="Panel" parent="."]
 visible = false

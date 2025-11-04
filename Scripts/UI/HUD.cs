@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Text;
+using DynamicRPG.Systems.Combat;
 using Godot;
 
 #nullable enable
@@ -80,6 +83,11 @@ public sealed partial class HUD : Control
         {
             _manaLabel.Text = $"Mana: {currentMana}/{maxMana}";
         }
+
+        if (Game.Instance?.Player is { StatusEffects: var statusEffects })
+        {
+            UpdateStatusEffects(statusEffects);
+        }
     }
 
     /// <summary>
@@ -96,13 +104,51 @@ public sealed partial class HUD : Control
     /// <summary>
     /// Updates the status effects display for the player.
     /// </summary>
-    public void UpdateStatusEffects(string statusText)
+    public void UpdateStatusEffects(IEnumerable<StatusEffect>? statusEffects)
     {
-        if (_statusEffectsLabel is not null)
+        if (_statusEffectsLabel is null)
         {
-            _statusEffectsLabel.Text = string.IsNullOrWhiteSpace(statusText)
-                ? "Nessun effetto"
-                : statusText;
+            return;
         }
+
+        _statusEffectsLabel.Text = FormatStatusEffectsText(statusEffects);
+    }
+
+    private static string FormatStatusEffectsText(IEnumerable<StatusEffect>? statusEffects)
+    {
+        if (statusEffects is null)
+        {
+            return "Nessun effetto";
+        }
+
+        var builder = new StringBuilder();
+        var hasEffects = false;
+
+        foreach (var effect in statusEffects)
+        {
+            if (effect is null)
+            {
+                continue;
+            }
+
+            hasEffects = true;
+            builder.Append(effect.Type);
+
+            if (effect.RemainingDuration > 0)
+            {
+                builder.Append('(');
+                builder.Append(effect.RemainingDuration);
+                builder.Append(')');
+            }
+
+            builder.Append(' ');
+        }
+
+        if (!hasEffects)
+        {
+            return "Nessun effetto";
+        }
+
+        return builder.ToString().TrimEnd();
     }
 }
