@@ -114,6 +114,12 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "Attacca"
 
+[node name="CancelButton" type="Button" parent="ActionPanel/VBoxContainer"]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Annulla"
+
 [node name="EndTurnButton" type="Button" parent="ActionPanel/VBoxContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
