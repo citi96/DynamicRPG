@@ -280,25 +280,56 @@ public partial class Character : Node2D
     public override void _Ready()
     {
         base._Ready();
+        EnsureVisualsReady();
+    }
 
-        var sprite = SpriteNodePath.IsEmpty
-            ? null
-            : GetNodeOrNull<Sprite2D>(SpriteNodePath);
-
-        if (sprite is null)
-        {
-            sprite = new Sprite2D
-            {
-                Name = SpriteNodePath.IsEmpty ? "CharacterSprite" : SpriteNodePath.GetName(0),
-            };
-
-            AddChild(sprite);
-            SpriteNodePath = sprite.GetPath();
-        }
-
+    /// <summary>
+    /// Guarantees that the character has a visible sprite configured even when spawned dynamically.
+    /// </summary>
+    public void EnsureVisualsReady()
+    {
+        var sprite = EnsureSpriteNode();
         sprite.Texture = ResolveTexture();
         sprite.Scale = SpriteScale;
         sprite.Modulate = IsPlayer ? PlayerColor : EnemyColor;
+    }
+
+    private Sprite2D EnsureSpriteNode()
+    {
+        Sprite2D? sprite = null;
+
+        if (!SpriteNodePath.IsEmpty)
+        {
+            sprite = GetNodeOrNull<Sprite2D>(SpriteNodePath);
+            if (sprite is not null && GodotObject.IsInstanceValid(sprite))
+            {
+                return sprite;
+            }
+        }
+
+        var spriteName = "CharacterSprite";
+
+        if (!SpriteNodePath.IsEmpty)
+        {
+            var pathString = SpriteNodePath.ToString();
+            if (!string.IsNullOrEmpty(pathString))
+            {
+                var segments = pathString.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                if (segments.Length > 0)
+                {
+                    spriteName = segments[^1];
+                }
+            }
+        }
+
+        sprite = new Sprite2D
+        {
+            Name = spriteName,
+        };
+
+        AddChild(sprite);
+        SpriteNodePath = new NodePath(spriteName);
+        return sprite;
     }
 
     private Texture2D ResolveTexture()

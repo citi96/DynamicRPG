@@ -1471,6 +1471,7 @@ public sealed partial class CombatManager : Node
             targetParent.AddChild(combatant);
         }
 
+        combatant.EnsureVisualsReady();
         combatant.Visible = true;
         combatant.ZAsRelative = false;
         combatant.ZIndex = 10 + gridPosition.Y;
