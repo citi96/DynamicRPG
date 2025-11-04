@@ -61,6 +61,22 @@ public sealed class CombatGrid
     }
 
     /// <summary>
+    /// Gets the movement cost required to enter the specified tile.
+    /// </summary>
+    /// <param name="position">The grid coordinates.</param>
+    /// <returns>The movement cost expressed in points.</returns>
+    public int GetMovementCost(GridPosition position)
+    {
+        EnsureInBounds(position);
+
+        return _tiles[position.X, position.Y] switch
+        {
+            TileType.Difficult => 2,
+            _ => 1,
+        };
+    }
+
+    /// <summary>
     /// Assigns a tile type to the specified position.
     /// </summary>
     /// <param name="position">The grid coordinates.</param>

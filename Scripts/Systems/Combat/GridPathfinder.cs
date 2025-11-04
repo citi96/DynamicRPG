@@ -21,7 +21,7 @@ public sealed class GridPathfinder
     }.AsReadOnly();
 
     /// <summary>
-    /// Finds a path between two points using a breadth-first search across cardinal directions.
+    /// Finds a path between two points using a weighted search across cardinal directions.
     /// </summary>
     /// <param name="grid">The combat grid.</param>
     /// <param name="mover">The character attempting to move.</param>
@@ -47,15 +47,20 @@ public sealed class GridPathfinder
             return new ReadOnlyCollection<GridPosition>(new List<GridPosition> { start });
         }
 
-        var queue = new Queue<GridPosition>();
+        var frontier = new PriorityQueue<GridPosition, int>();
         var cameFrom = new Dictionary<GridPosition, GridPosition>();
-        var visited = new HashSet<GridPosition> { start };
+        var costSoFar = new Dictionary<GridPosition, int> { [start] = 0 };
 
-        queue.Enqueue(start);
+        frontier.Enqueue(start, 0);
 
-        while (queue.Count > 0)
+        while (frontier.Count > 0)
         {
-            var current = queue.Dequeue();
+            var current = frontier.Dequeue();
+
+            if (current == destination)
+            {
+                return BuildPath(start, destination, cameFrom);
+            }
 
             foreach (var direction in CardinalDirections)
             {
@@ -66,25 +71,24 @@ public sealed class GridPathfinder
                     continue;
                 }
 
-                if (visited.Contains(neighbor))
+                var isDestination = neighbor == destination;
+
+                if (!grid.CanOccupy(neighbor, mover) && !isDestination)
                 {
                     continue;
                 }
 
-                if (!grid.CanOccupy(neighbor, mover) && neighbor != destination)
+                var movementCost = grid.GetMovementCost(neighbor);
+                var newCost = costSoFar[current] + movementCost;
+
+                if (costSoFar.TryGetValue(neighbor, out var existingCost) && existingCost <= newCost)
                 {
                     continue;
                 }
 
+                costSoFar[neighbor] = newCost;
                 cameFrom[neighbor] = current;
-                visited.Add(neighbor);
-
-                if (neighbor == destination)
-                {
-                    return BuildPath(start, destination, cameFrom);
-                }
-
-                queue.Enqueue(neighbor);
+                frontier.Enqueue(neighbor, newCost);
             }
         }
 
