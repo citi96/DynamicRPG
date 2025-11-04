@@ -36,6 +36,7 @@ public sealed partial class CombatManager : Node
     private Node2D? _characterContainer;
     private Character? _activePlayerCharacter;
     private readonly HashSet<Character> _visualizedCombatants = new();
+    private readonly Dictionary<Character, PlayerNodeRestoreInfo> _playerRestoreInfo = new();
 
     public static CombatManager? Instance { get; private set; }
 
@@ -1433,6 +1434,30 @@ public sealed partial class CombatManager : Node
 
         EnsureCharacterContainerReady();
 
+        if (combatant.IsPlayer && !_playerRestoreInfo.ContainsKey(combatant))
+        {
+            var parent = combatant.GetParent();
+
+            if (parent is not null)
+            {
+                var children = parent.GetChildren();
+                var index = children.IndexOf(combatant);
+                if (index < 0)
+                {
+                    index = parent.GetChildCount();
+                }
+                var info = new PlayerNodeRestoreInfo(
+                    parent,
+                    index,
+                    combatant.ZAsRelative,
+                    combatant.ZIndex,
+                    combatant.GlobalPosition,
+                    combatant.Visible);
+
+                _playerRestoreInfo[combatant] = info;
+            }
+        }
+
         Node targetParent = this;
 
         if (_characterContainer is not null && GodotObject.IsInstanceValid(_characterContainer))
@@ -1499,11 +1524,36 @@ public sealed partial class CombatManager : Node
 
         if (character.IsPlayer)
         {
-            if (character.IsInsideTree())
+            if (_playerRestoreInfo.TryGetValue(character, out var restoreInfo) && GodotObject.IsInstanceValid(restoreInfo.Parent))
             {
-                character.Visible = false;
-                character.GetParent()?.RemoveChild(character);
+                if (character.GetParent() != restoreInfo.Parent)
+                {
+                    character.GetParent()?.RemoveChild(character);
+                    restoreInfo.Parent.AddChild(character);
+                }
+
+                var childCount = restoreInfo.Parent.GetChildCount();
+                if (childCount > 0)
+                {
+                    var targetIndex = Math.Clamp(restoreInfo.ChildIndex, 0, childCount - 1);
+
+                    if (targetIndex >= 0 && restoreInfo.Parent.GetChild(targetIndex) != character)
+                    {
+                        restoreInfo.Parent.MoveChild(character, targetIndex);
+                    }
+                }
+
+                character.ZAsRelative = restoreInfo.ZAsRelative;
+                character.ZIndex = restoreInfo.ZIndex;
+                character.GlobalPosition = restoreInfo.GlobalPosition;
+                character.Visible = restoreInfo.WasVisible;
             }
+            else if (character.IsInsideTree())
+            {
+                character.Visible = true;
+            }
+
+            _playerRestoreInfo.Remove(character);
             return;
         }
 
@@ -1525,6 +1575,7 @@ public sealed partial class CombatManager : Node
         }
 
         _visualizedCombatants.Clear();
+        _playerRestoreInfo.Clear();
 
         if (_characterContainer is not null && GodotObject.IsInstanceValid(_characterContainer))
         {
@@ -1631,6 +1682,26 @@ public sealed partial class CombatManager : Node
         {
             _characterContainer.Visible = false;
         }
+    }
+
+    private readonly struct PlayerNodeRestoreInfo
+    {
+        public PlayerNodeRestoreInfo(Node parent, int childIndex, bool zAsRelative, int zIndex, Vector2 globalPosition, bool wasVisible)
+        {
+            Parent = parent;
+            ChildIndex = childIndex;
+            ZAsRelative = zAsRelative;
+            ZIndex = zIndex;
+            GlobalPosition = globalPosition;
+            WasVisible = wasVisible;
+        }
+
+        public Node Parent { get; }
+        public int ChildIndex { get; }
+        public bool ZAsRelative { get; }
+        public int ZIndex { get; }
+        public Vector2 GlobalPosition { get; }
+        public bool WasVisible { get; }
     }
 
     private readonly record struct InitiativeEntry(Character Combatant, int Total, int DexterityScore, float TieBreaker);
