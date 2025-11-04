@@ -18,6 +18,7 @@ public sealed partial class HUD : Control
     private Label? _manaLabel;
     private Label? _turnLabel;
     private Label? _statusEffectsLabel;
+    private Control? _turnPanel;
 
     public ActionMenu? ActionMenu { get; private set; }
 
@@ -29,8 +30,11 @@ public sealed partial class HUD : Control
         // Ottieni riferimenti ai nuovi pannelli
         _hpLabel = GetNodeOrNull<Label>("StatusPanel/StatsContainer/HPLabel");
         _manaLabel = GetNodeOrNull<Label>("StatusPanel/StatsContainer/ManaLabel");
-        _turnLabel = GetNodeOrNull<Label>("TurnPanel/TurnLabel");
+        _turnPanel = GetNodeOrNull<Control>("TurnPanel");
+        _turnLabel = _turnPanel?.GetNodeOrNull<Label>("TurnLabel");
         _statusEffectsLabel = GetNodeOrNull<Label>("StatusPanel/StatsContainer/StatusEffectsLabel");
+
+        ClearTurnIndicator();
     }
 
     /// <summary>
@@ -95,10 +99,33 @@ public sealed partial class HUD : Control
     /// </summary>
     public void UpdateTurnIndicator(string characterName, int roundNumber)
     {
+        if (_turnLabel is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(characterName))
+        {
+            characterName = "Sconosciuto";
+        }
+
+        _turnLabel.Text = $"Turno di: {characterName} (Round {Math.Max(1, roundNumber)})";
+        _turnLabel.Visible = true;
+        _turnPanel?.Show();
+    }
+
+    /// <summary>
+    /// Clears the turn indicator text and hides the panel from the HUD.
+    /// </summary>
+    public void ClearTurnIndicator()
+    {
         if (_turnLabel is not null)
         {
-            _turnLabel.Text = $"Turno di: {characterName} (Round {roundNumber})";
+            _turnLabel.Text = string.Empty;
+            _turnLabel.Visible = false;
         }
+
+        _turnPanel?.Hide();
     }
 
     /// <summary>

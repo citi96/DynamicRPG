@@ -1048,6 +1048,8 @@ public sealed partial class CombatManager : Node
         _combatGrid?.ClearOccupants();
         _combatGrid = null;
         HideBattleGrid();
+
+        Game.Instance?.HUD?.ClearTurnIndicator();
     }
 
     private void AdvanceToNextTurnIndex()
