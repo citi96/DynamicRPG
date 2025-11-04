@@ -13,17 +13,25 @@ public sealed partial class ActionMenu : Panel
     private Button? _moveButton;
     private Button? _attackButton;
     private Button? _endTurnButton;
+    private Button? _cancelButton;
 
     public override void _Ready()
     {
         _moveButton = GetNodeOrNull<Button>("VBoxContainer/MoveButton");
         _attackButton = GetNodeOrNull<Button>("VBoxContainer/AttackButton");
         _endTurnButton = GetNodeOrNull<Button>("VBoxContainer/EndTurnButton");
+        _cancelButton = GetNodeOrNull<Button>("VBoxContainer/CancelButton");
 
         ThemeHelper.ApplySharedTheme(this);
         ApplyButtonStyling();
         HideMenu();
         ConnectButtonSignals();
+
+        if (_cancelButton is not null)
+        {
+            _cancelButton.Visible = false;
+            _cancelButton.Disabled = true;
+        }
     }
 
     private void ConnectButtonSignals()
@@ -41,6 +49,11 @@ public sealed partial class ActionMenu : Panel
         if (_endTurnButton is not null)
         {
             _endTurnButton.Pressed += OnEndTurnPressed;
+        }
+
+        if (_cancelButton is not null)
+        {
+            _cancelButton.Pressed += OnCancelPressed;
         }
     }
 
@@ -69,6 +82,13 @@ public sealed partial class ActionMenu : Panel
             _endTurnButton.ExpandIcon = true;
             _endTurnButton.TooltipText = "Chiudi il turno corrente e passa ai nemici.";
         }
+
+        if (_cancelButton is not null)
+        {
+            _cancelButton.IconAlignment = HorizontalAlignment.Left;
+            _cancelButton.ExpandIcon = true;
+            _cancelButton.TooltipText = "Annulla l'azione corrente e riapri il menu.";
+        }
     }
 
     /// <summary>
@@ -76,6 +96,7 @@ public sealed partial class ActionMenu : Panel
     /// </summary>
     public void ShowMenu()
     {
+        ExitTargetingMode();
         Visible = true;
         SetMenuEnabled(true);
     }
@@ -86,6 +107,7 @@ public sealed partial class ActionMenu : Panel
     public void HideMenu()
     {
         Visible = false;
+        ExitTargetingMode();
         SetMenuEnabled(false);
     }
 
@@ -111,32 +133,87 @@ public sealed partial class ActionMenu : Panel
         {
             _endTurnButton.Disabled = !enabled;
         }
+
+        if (_cancelButton is not null)
+        {
+            _cancelButton.Disabled = !enabled;
+        }
     }
 
     private static CombatManager? GetCombatManager() => CombatManager.Instance ?? Game.Instance?.CombatManager;
 
-    private void DisableMenuForAction()
+    private void EnterTargetingMode()
     {
-        SetMenuEnabled(false);
-        Visible = false;
+        Visible = true;
+        MouseFilter = MouseFilterEnum.Stop;
+
+        if (_moveButton is not null)
+        {
+            _moveButton.Disabled = true;
+        }
+
+        if (_attackButton is not null)
+        {
+            _attackButton.Disabled = true;
+        }
+
+        if (_endTurnButton is not null)
+        {
+            _endTurnButton.Disabled = true;
+        }
+
+        if (_cancelButton is not null)
+        {
+            _cancelButton.Visible = true;
+            _cancelButton.Disabled = false;
+        }
+    }
+
+    private void ExitTargetingMode()
+    {
+        if (_cancelButton is not null)
+        {
+            _cancelButton.Visible = false;
+            _cancelButton.Disabled = true;
+        }
+
+        if (_moveButton is not null)
+        {
+            _moveButton.Disabled = false;
+        }
+
+        if (_attackButton is not null)
+        {
+            _attackButton.Disabled = false;
+        }
+
+        if (_endTurnButton is not null)
+        {
+            _endTurnButton.Disabled = false;
+        }
     }
 
     private void OnMovePressed()
     {
-        DisableMenuForAction();
+        EnterTargetingMode();
         GetCombatManager()?.PrepareMove();
     }
 
     private void OnAttackPressed()
     {
-        DisableMenuForAction();
+        EnterTargetingMode();
         GetCombatManager()?.HandlePlayerAttackRequest();
     }
 
     private void OnEndTurnPressed()
     {
-        DisableMenuForAction();
+        HideMenu();
         Game.Instance?.HUD?.AddLogMessage("Turno terminato da giocatore.");
         GetCombatManager()?.EndTurn();
+    }
+
+    private void OnCancelPressed()
+    {
+        GetCombatManager()?.CancelPlayerAction();
     }
 }

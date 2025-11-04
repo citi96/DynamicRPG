@@ -364,6 +364,32 @@ public sealed partial class CombatManager : Node
         LogMessage($"Seleziona un bersaglio da attaccare con {_activePlayerCharacter.Name}.");
     }
 
+    public void CancelPlayerAction()
+    {
+        if (!IsCombatActive)
+        {
+            ActionMenu?.ShowMenu();
+            return;
+        }
+
+        if (_activePlayerCharacter is null)
+        {
+            ActionMenu?.ShowMenu();
+            return;
+        }
+
+        if (!AwaitingMoveTarget && !AwaitingAttackTarget)
+        {
+            ActionMenu?.ShowMenu();
+            return;
+        }
+
+        AwaitingMoveTarget = false;
+        AwaitingAttackTarget = false;
+        LogMessage($"{_activePlayerCharacter.Name} annulla l'azione selezionata.");
+        ActionMenu?.ShowMenu();
+    }
+
     /// <summary>
     /// Performs complete attack resolution (Prompt 4.7).
     /// </summary>
@@ -1149,11 +1175,7 @@ public sealed partial class CombatManager : Node
             return;
         }
 
-        var viewport = GetViewport();
-        if (viewport is null) return;
-
-        var clickPos = viewport.GetMousePosition();
-        var localPos = _battleTileLayer.ToLocal(clickPos);
+        var localPos = _battleTileLayer.GetLocalMousePosition();
         var cell = _battleTileLayer.LocalToMap(localPos);
 
         HandleTileSelection(cell);
@@ -1506,7 +1528,9 @@ public sealed partial class CombatManager : Node
         {
             var cellPosition = new Vector2I(gridPosition.X, gridPosition.Y);
             var localPosition = _battleTileLayer.MapToLocal(cellPosition);
-            return _battleTileLayer.ToGlobal(localPosition);
+            var tileSize = _battleTileLayer.TileSet?.TileSize ?? BattleTileSize;
+            var centeredLocalPosition = localPosition + (Vector2)tileSize / 2f;
+            return _battleTileLayer.ToGlobal(centeredLocalPosition);
         }
 
         return new Vector2(
