@@ -314,139 +314,182 @@ public partial class Character : Node2D
     }
 
     /// <summary>
-    /// Applies a status effect to the character.
-    /// If the same status already exists, updates to the highest duration.
+    /// Applies or refreshes a status effect on the character.
     /// </summary>
+    /// <remarks>
+    /// Alcuni effetti possono cumulare la potenza (Bleeding) mentre altri aggiornano solo la durata.
+    /// </remarks>
     public void ApplyStatus(StatusType type, int duration, int potency = 0)
     {
-        var existing = StatusEffects.FirstOrDefault(effect => effect.Type == type);
+        if (duration <= 0)
+        {
+            GD.PushWarning($"Tentativo di applicare {type} a {Name} con durata non positiva ({duration}). Effetto ignorato.");
+            return;
+        }
+
+        if (potency < 0)
+        {
+            GD.PushWarning($"Potenza negativa ({potency}) per {type} su {Name}. Il valore è stato normalizzato a 0.");
+            potency = 0;
+        }
+
+        var existing = FindStatus(type);
 
         if (existing is not null)
         {
-            // Aggiorna alla durata maggiore
+            var previousDuration = existing.RemainingDuration;
             existing.RemainingDuration = Math.Max(existing.RemainingDuration, duration);
 
-            // Per Bleeding, accumula la potenza invece di sostituire
             if (type == StatusType.Bleeding)
             {
-                existing.Potency += potency;
+                var additionalPotency = Math.Max(1, potency);
+                existing.Potency += additionalPotency;
+                ReportStatusMessage($"{Name} sanguina più copiosamente (Potenza {existing.Potency}).");
             }
-            else
+            else if (potency > existing.Potency)
             {
-                existing.Potency = Math.Max(existing.Potency, potency);
+                existing.Potency = potency;
             }
-        }
-        else
-        {
-            StatusEffects.Add(new StatusEffect(type, duration, potency));
+
+            if (existing.RemainingDuration > previousDuration)
+            {
+                ReportStatusMessage($"La durata di {type} su {Name} è estesa a {existing.RemainingDuration} turni.");
+            }
+
+            return;
         }
 
-        Console.WriteLine($"{Name} è ora affetto da {type} per {duration} turni.");
+        var effect = new StatusEffect(type, duration, potency);
+        StatusEffects.Add(effect);
+        ReportStatusMessage($"{Name} è ora affetto da {type} per {duration} turni.");
     }
 
     /// <summary>
     /// Rimuove uno status effect specifico.
     /// </summary>
-    public bool RemoveStatus(StatusType type)
+    public bool RemoveStatus(StatusType type, bool showLog = true)
     {
         var removed = StatusEffects.RemoveAll(effect => effect.Type == type);
-        if (removed > 0)
+        if (removed > 0 && showLog)
         {
-            Console.WriteLine($"{type} rimosso da {Name}.");
+            ReportStatusMessage($"{type} rimosso da {Name}.");
         }
+
         return removed > 0;
     }
 
     /// <summary>
     /// Verifica se il personaggio ha un determinato status attivo.
     /// </summary>
-    public bool HasStatus(StatusType type) =>
-        StatusEffects.Any(effect => effect.Type == type);
+    public bool HasStatus(StatusType type) => FindStatus(type) is not null;
 
     /// <summary>
     /// Processa gli effetti degli status all'inizio del turno.
     /// Returns true se il personaggio può agire normalmente.
+    /// Effetti come <see cref="StatusType.Invisible"/>, <see cref="StatusType.Silenced"/>,
+    /// <see cref="StatusType.Charmed"/>, <see cref="StatusType.Panicked"/> e <see cref="StatusType.Exhausted"/>
+    /// sono tracciati ma richiederanno logiche dedicate in sistemi futuri.
     /// </summary>
     public bool ProcessBeginTurnStatusEffects()
     {
-        // Stunned: perde il turno
-        if (HasStatus(StatusType.Stunned))
+        if (FindStatus(StatusType.Stunned) is not null)
         {
-            Console.WriteLine($"{Name} è stordito e perde il turno.");
+            ReportStatusMessage($"{Name} è stordito e perde il turno.");
             return false;
         }
 
-        // Frozen: non può muoversi né agire
-        if (HasStatus(StatusType.Frozen))
+        if (FindStatus(StatusType.Frozen) is not null)
         {
-            Console.WriteLine($"{Name} è congelato e non può agire.");
+            ReportStatusMessage($"{Name} è congelato e non può agire.");
             return false;
         }
 
-        // Prone: richiede azione per rialzarsi (semplificato: rimuove prone e usa metà movimento)
-        if (HasStatus(StatusType.Prone))
+        var effectiveMovement = CurrentMovementAllowance;
+
+        if (FindStatus(StatusType.Prone) is { } prone)
         {
-            RemoveStatus(StatusType.Prone);
-            CurrentMovementAllowance = Math.Max(1, CurrentMovementAllowance / 2);
-            Console.WriteLine($"{Name} si rialza ma ha movimento ridotto.");
+            StatusEffects.Remove(prone); // Rialzarsi rimuove lo stato, ma consuma parte del turno.
+            effectiveMovement = Math.Max(1, effectiveMovement / 2);
+            ReportStatusMessage($"{Name} si rialza e ha movimento ridotto per questo turno.");
         }
 
-        // Slowed: dimezza movimento
-        if (HasStatus(StatusType.Slowed))
+        if (FindStatus(StatusType.Slowed) is not null)
         {
-            CurrentMovementAllowance = Math.Max(1, CurrentMovementAllowance / 2);
+            effectiveMovement = Math.Max(1, effectiveMovement / 2);
+            ReportStatusMessage($"{Name} è rallentato e può muoversi meno del solito.");
         }
 
-        // Hasted: aumenta movimento
-        if (HasStatus(StatusType.Hasted))
+        if (FindStatus(StatusType.Hasted) is not null)
         {
-            CurrentMovementAllowance += 2;
+            effectiveMovement += 2;
+            ReportStatusMessage($"{Name} è accelerato e ottiene movimento aggiuntivo.");
         }
 
+        RemainingMovement = Math.Max(0, effectiveMovement);
         return true;
     }
 
     /// <summary>
-    /// Processa gli effetti degli status alla fine del turno (DoT, decrements).
+    /// Processa gli effetti degli status alla fine del turno (DoT, decremento durate).
+    /// Effetti non dannosi come invisibilità o silenzio verranno gestiti in moduli successivi.
     /// </summary>
     public void ProcessEndTurnStatusEffects()
     {
+        if (StatusEffects.Count == 0)
+        {
+            return;
+        }
+
         var effectsToRemove = new List<StatusEffect>();
 
         foreach (var effect in StatusEffects)
         {
-            // Applica danno periodico
             switch (effect.Type)
             {
                 case StatusType.Bleeding:
-                    var bleedDamage = Math.Max(2, effect.Potency);
-                    TakeDamage(bleedDamage);
-                    Console.WriteLine($"{Name} perde {bleedDamage} HP a causa di Bleeding.");
+                    ApplyDamageOverTime(effect, Math.Max(1, effect.Potency) * 2, "sanguinamento");
                     break;
 
                 case StatusType.Poisoned:
-                    TakeDamage(2);
-                    Console.WriteLine($"{Name} perde 2 HP a causa del veleno.");
+                    ApplyDamageOverTime(effect, Math.Max(1, effect.Potency == 0 ? 2 : effect.Potency), "avvelenamento");
                     break;
 
                 case StatusType.Burning:
-                    TakeDamage(5);
-                    Console.WriteLine($"{Name} perde 5 HP a causa delle fiamme.");
+                    ApplyDamageOverTime(effect, Math.Max(1, effect.Potency == 0 ? 5 : effect.Potency), "ustioni");
                     break;
             }
 
-            // Decrementa durata
             if (effect.DecrementDuration())
             {
                 effectsToRemove.Add(effect);
-                Console.WriteLine($"{effect.Type} su {Name} è svanito.");
             }
         }
 
-        // Rimuovi effetti scaduti
         foreach (var effect in effectsToRemove)
         {
             StatusEffects.Remove(effect);
+            ReportStatusMessage($"{effect.Type} su {Name} è svanito.");
+        }
+    }
+
+    private StatusEffect? FindStatus(StatusType type) =>
+        StatusEffects.FirstOrDefault(effect => effect.Type == type);
+
+    private void ApplyDamageOverTime(StatusEffect effect, int damageAmount, string causeLabel)
+    {
+        if (damageAmount <= 0)
+        {
+            return;
+        }
+
+        var wasAlive = CurrentHealth > 0;
+        TakeDamage(damageAmount);
+        var potencySuffix = effect.Potency > 0 ? $" (Potenza {effect.Potency})" : string.Empty;
+        ReportStatusMessage($"{Name} perde {damageAmount} HP a causa di {causeLabel}.{potencySuffix}");
+
+        if (wasAlive && IsDead)
+        {
+            ReportStatusMessage($"{Name} soccombe alle ferite inflitte da {causeLabel}.");
         }
     }
 
@@ -461,6 +504,16 @@ public partial class Character : Node2D
         }
 
         return string.Join(" ", StatusEffects.Select(effect => effect.ToString()));
+    }
+
+    private static void ReportStatusMessage(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        CombatManager.LogMessage(message);
     }
 
     /// <summary>
