@@ -121,13 +121,18 @@ text = "Termina Turno"
 
 [node name="LogPanel" type="Panel" parent="."]
 layout_mode = 1
-anchors_preset = 12
+anchors_preset = 3
+anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -180.0
-grow_horizontal = 2
+offset_left = -360.0
+offset_top = -220.0
+offset_right = -24.0
+offset_bottom = -24.0
+grow_horizontal = 0
 grow_vertical = 0
+mouse_filter = 2
 
 [node name="CombatLog" type="RichTextLabel" parent="LogPanel"]
 layout_mode = 1
