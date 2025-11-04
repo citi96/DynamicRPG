@@ -1,0 +1,2 @@
+Inserire qui un'immagine PNG trasparente di un albero in stile isometrico (circa 512x512 px) chiamata tree.png.
+Salvare il file reale in questa cartella con lo stesso nome per attivare il fogliame procedurale.
