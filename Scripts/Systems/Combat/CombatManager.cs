@@ -33,7 +33,9 @@ public sealed partial class CombatManager : Node
     private CombatGrid? _combatGrid;
     private TileMapLayer? _battleTileLayer;
     private TileSet? _battleTileSet;
+    private Node2D? _characterContainer;
     private Character? _activePlayerCharacter;
+    private readonly HashSet<Character> _visualizedCombatants = new();
 
     public static CombatManager? Instance { get; private set; }
 
@@ -105,6 +107,7 @@ public sealed partial class CombatManager : Node
     {
         base._Ready();
         EnsureBattleTileLayerReady();
+        EnsureCharacterContainerReady();
         HideBattleGrid();
     }
 
@@ -132,6 +135,8 @@ public sealed partial class CombatManager : Node
 
         Enemies.Clear();
         Enemies.AddRange(enemies.Where(character => character is not null));
+
+        ClearBattlefieldVisuals();
 
         TurnOrder.Clear();
         RoundNumber = 1;
@@ -510,6 +515,7 @@ public sealed partial class CombatManager : Node
             }
 
             character.SetPosition(nextPosition.X, nextPosition.Y);
+            UpdateCharacterWorldPosition(character, nextPosition);
             movementSpent += tileCost;
             currentPosition = nextPosition;
             moved = true;
@@ -982,12 +988,21 @@ public sealed partial class CombatManager : Node
 
     private void RemoveDefeatedCombatants()
     {
+        var defeatedCombatants = Players.Concat(Enemies)
+            .Where(c => c.CurrentHealth <= 0)
+            .ToList();
+
         if (_combatGrid is not null)
         {
-            foreach (var defeated in Players.Concat(Enemies).Where(c => c.CurrentHealth <= 0))
+            foreach (var defeated in defeatedCombatants)
             {
                 _combatGrid.Vacate(new GridPosition(defeated.PositionX, defeated.PositionY), defeated);
             }
+        }
+
+        foreach (var defeated in defeatedCombatants)
+        {
+            RemoveCharacterFromBattlefield(defeated);
         }
 
         var removed = TurnOrder.RemoveAll(c => c.CurrentHealth <= 0);
@@ -1030,6 +1045,7 @@ public sealed partial class CombatManager : Node
 
     private void EndCombat()
     {
+        ClearBattlefieldVisuals();
         Players.Clear();
         Enemies.Clear();
         TurnOrder.Clear();
@@ -1258,6 +1274,7 @@ public sealed partial class CombatManager : Node
 
         _combatGrid = grid;
         LogMessage($"Griglia di combattimento inizializzata: {DefaultGridWidth}x{DefaultGridHeight}.");
+        EnsureCharacterContainerReady();
         ShowBattleGrid();
     }
 
@@ -1323,6 +1340,7 @@ public sealed partial class CombatManager : Node
             if (assignedPosition is GridPosition finalPosition)
             {
                 combatant.SetPosition(finalPosition.X, finalPosition.Y);
+                PlaceCharacterOnBattlefield(combatant, finalPosition);
                 LogMessage($"{combatant.Name} ({factionLabel}) posizionato a {finalPosition}.");
             }
             else
@@ -1370,6 +1388,147 @@ public sealed partial class CombatManager : Node
             }
 
             _battleTileSet.TileSize = BattleTileSize;
+        }
+    }
+
+    private void EnsureCharacterContainerReady()
+    {
+        if (_characterContainer is not null && GodotObject.IsInstanceValid(_characterContainer))
+        {
+            return;
+        }
+
+        _characterContainer = GetNodeOrNull<Node2D>("Arena/Characters");
+
+        if (_characterContainer is not null)
+        {
+            _characterContainer.YSortEnabled = true;
+            _characterContainer.Visible = false;
+            _characterContainer.ZIndex = 1;
+            return;
+        }
+
+        var arena = GetNodeOrNull<Node2D>("Arena");
+
+        if (arena is null)
+        {
+            GD.PushWarning("Nodo Arena non trovato: i personaggi saranno aggiunti direttamente al CombatManager.");
+            return;
+        }
+
+        _characterContainer = new Node2D
+        {
+            Name = "Characters",
+            YSortEnabled = true,
+            Visible = false,
+            ZIndex = 1,
+        };
+
+        arena.AddChild(_characterContainer);
+    }
+
+    private void PlaceCharacterOnBattlefield(Character combatant, GridPosition gridPosition)
+    {
+        ArgumentNullException.ThrowIfNull(combatant);
+
+        EnsureCharacterContainerReady();
+
+        Node targetParent = this;
+
+        if (_characterContainer is not null && GodotObject.IsInstanceValid(_characterContainer))
+        {
+            targetParent = _characterContainer;
+        }
+
+        if (!combatant.IsQueuedForDeletion() && combatant.GetParent() != targetParent)
+        {
+            combatant.GetParent()?.RemoveChild(combatant);
+            targetParent.AddChild(combatant);
+        }
+
+        combatant.Visible = true;
+        combatant.ZAsRelative = false;
+        combatant.ZIndex = 10 + gridPosition.Y;
+
+        if (_characterContainer is not null && GodotObject.IsInstanceValid(_characterContainer))
+        {
+            _characterContainer.Visible = true;
+        }
+
+        UpdateCharacterWorldPosition(combatant, gridPosition);
+        _visualizedCombatants.Add(combatant);
+    }
+
+    private void UpdateCharacterWorldPosition(Character character)
+    {
+        ArgumentNullException.ThrowIfNull(character);
+        var gridPosition = new GridPosition(character.PositionX, character.PositionY);
+        UpdateCharacterWorldPosition(character, gridPosition);
+    }
+
+    private void UpdateCharacterWorldPosition(Character character, GridPosition gridPosition)
+    {
+        ArgumentNullException.ThrowIfNull(character);
+
+        var worldPosition = GetWorldPosition(gridPosition);
+        character.GlobalPosition = worldPosition;
+    }
+
+    private Vector2 GetWorldPosition(GridPosition gridPosition)
+    {
+        if (_battleTileLayer is not null)
+        {
+            var cellPosition = new Vector2I(gridPosition.X, gridPosition.Y);
+            var localPosition = _battleTileLayer.MapToLocal(cellPosition);
+            return _battleTileLayer.ToGlobal(localPosition);
+        }
+
+        return new Vector2(
+            (gridPosition.X + 0.5f) * BattleTileSize.X,
+            (gridPosition.Y + 0.5f) * BattleTileSize.Y);
+    }
+
+    private void RemoveCharacterFromBattlefield(Character? character)
+    {
+        if (character is null)
+        {
+            return;
+        }
+
+        _visualizedCombatants.Remove(character);
+
+        if (character.IsPlayer)
+        {
+            if (character.IsInsideTree())
+            {
+                character.Visible = false;
+                character.GetParent()?.RemoveChild(character);
+            }
+            return;
+        }
+
+        if (character.IsInsideTree())
+        {
+            character.QueueFree();
+        }
+        else if (!character.IsQueuedForDeletion())
+        {
+            character.QueueFree();
+        }
+    }
+
+    private void ClearBattlefieldVisuals()
+    {
+        foreach (var combatant in _visualizedCombatants.ToArray())
+        {
+            RemoveCharacterFromBattlefield(combatant);
+        }
+
+        _visualizedCombatants.Clear();
+
+        if (_characterContainer is not null && GodotObject.IsInstanceValid(_characterContainer))
+        {
+            _characterContainer.Visible = false;
         }
     }
 
@@ -1437,6 +1596,7 @@ public sealed partial class CombatManager : Node
     private void ShowBattleGrid()
     {
         EnsureBattleTileLayerReady();
+        EnsureCharacterContainerReady();
 
         if (_battleTileLayer is not null)
         {
@@ -1445,6 +1605,11 @@ public sealed partial class CombatManager : Node
             {
                 canvasParent.Visible = true;
             }
+        }
+
+        if (_characterContainer is not null && GodotObject.IsInstanceValid(_characterContainer))
+        {
+            _characterContainer.Visible = true;
         }
     }
 
@@ -1460,6 +1625,11 @@ public sealed partial class CombatManager : Node
         if (_battleTileLayer.GetParent() is CanvasItem canvasParent)
         {
             canvasParent.Visible = false;
+        }
+
+        if (_characterContainer is not null && GodotObject.IsInstanceValid(_characterContainer))
+        {
+            _characterContainer.Visible = false;
         }
     }
 
