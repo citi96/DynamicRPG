@@ -105,9 +105,13 @@ public partial class ExplorationController : Node2D
         _worldRoot = GetNodeOrNull<Node2D>("World");
 
         Player ??= GetNodeOrNull<PlayerController>("World/Player");
-        LocationInfoLabel ??= GetNodeOrNull<Label>("InfoLayer/InfoPanel/Info")
+        LocationInfoLabel ??= GetNodeOrNull<Label>("InfoPanel/InfoContainer/Info")
+            ?? GetNodeOrNull<Label>("InfoPanel/Info")
+            ?? GetNodeOrNull<Label>("InfoLayer/InfoPanel/Info")
             ?? GetNodeOrNull<Label>("InfoLayer/Info");
-        HelpLabel ??= GetNodeOrNull<Label>("InfoLayer/HelpPanel/Help")
+        HelpLabel ??= GetNodeOrNull<Label>("HelpPanel/HelpContainer/Help")
+            ?? GetNodeOrNull<Label>("HelpPanel/Help")
+            ?? GetNodeOrNull<Label>("InfoLayer/HelpPanel/Help")
             ?? GetNodeOrNull<Label>("InfoLayer/Help");
         ApplyOverlayTheme();
         PlayerSpawn ??= GetNodeOrNull<Marker2D>("World/PlayerSpawn");
