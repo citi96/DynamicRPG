@@ -1,2 +1,0 @@
-Sostituire con un'icona PNG 64x64 per il movimento (es. stivali o frecce direzionali) chiamata move.png.
-Inserire il file reale in questa cartella con lo stesso nome.

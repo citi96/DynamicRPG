@@ -1,2 +1,0 @@
-Sostituire con un'icona PNG 64x64 che rappresenti la fine turno (es. clessidra o bandiera) chiamata end_turn.png.
-Collocare il file qui per visualizzarlo nell'interfaccia di combattimento.

@@ -1,2 +1,0 @@
-Sostituire con un'icona PNG 64x64 che rappresenti un attacco (es. spada o fulmine) chiamata attack.png.
-Il file deve essere posizionato qui per mostrarlo nel menu azioni.

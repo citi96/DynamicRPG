@@ -16,16 +16,15 @@ script = ExtResource("1")
 visible = false
 self_modulate = Color(1, 1, 1, 0.8)
 layout_mode = 1
-anchors_preset = 8
+anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-anchor_top = 0.0
-anchor_bottom = 0.0
 offset_left = -160.0
 offset_top = 16.0
 offset_right = 160.0
 offset_bottom = 64.0
 grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 1
 
 [node name="TurnLabel" type="Label" parent="TurnPanel"]
@@ -39,15 +38,14 @@ offset_right = -12.0
 offset_bottom = -8.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 1
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3
-mouse_filter = 1
 
 [node name="StatusPanel" type="Panel" parent="."]
 self_modulate = Color(1, 1, 1, 0.75)
 layout_mode = 1
-anchors_preset = 0
 offset_left = 16.0
 offset_top = 16.0
 offset_right = 176.0

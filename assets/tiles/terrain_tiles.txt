@@ -1,2 +1,0 @@
-Posizionare qui un tileset PNG 4x1 (64x64 px per tile consigliato) con le texture nell'ordine: erba, sentiero, acqua, pietra.
-Il file deve chiamarsi terrain_tiles.png e risiedere in questa cartella.
