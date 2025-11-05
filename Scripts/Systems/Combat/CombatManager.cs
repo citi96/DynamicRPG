@@ -1176,7 +1176,17 @@ public sealed partial class CombatManager : Node
         }
 
         var localPos = _battleTileLayer.GetLocalMousePosition();
-        var cell = _battleTileLayer.LocalToMap(localPos);
+        var tileSize = _battleTileLayer.TileSet?.TileSize ?? BattleTileSize;
+
+        if (tileSize.X <= 0 || tileSize.Y <= 0)
+        {
+            LogMessage("Dimensioni della griglia non valide.");
+            return;
+        }
+
+        var cell = new Vector2I(
+            Mathf.FloorToInt(localPos.X / tileSize.X),
+            Mathf.FloorToInt(localPos.Y / tileSize.Y));
 
         HandleTileSelection(cell);
     }
